@@ -105,7 +105,25 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 				throw new IllegalStateException("Error reading type of path " + path + ", commit " + commit + " and file " + file, e);
 			}
 			return 0;
-		} else if (GitUtils.isBranchDir(path) || GitUtils.isTagDir(path) || GitUtils.isRemoteDir(path)) {
+		} else if (GitUtils.isBranchDir(path)) {
+			String branch = StringUtils.removeStart(path, "/branch/");
+			try {
+				List<String> items = jgitHelper.getBranches();
+				for(String item : items) {
+					if (item.equals(branch)) {
+						// Exact match
+						stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
+						return 0;
+					} else if (item.startsWith(branch) && item.startsWith(branch + "/")) {
+						// It's a directory containing branches.
+						stat.setMode(NodeType.DIRECTORY, true, false, true);
+						return 0;
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading branches", e);
+			}
+		} else if (GitUtils.isTagDir(path) || GitUtils.isRemoteDir(path)) {
 			// entries under /branch and /tag are always symbolic links
 			//stat.uid(GitUtils.UID);
 			//stat.gid(GitUtils.GID);
@@ -220,6 +238,27 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			}
 
 			return 0;
+		} else if (GitUtils.isBranchDir(path)) {
+			try {
+				String parent = StringUtils.removeStart(path, "/branch/");
+				HashSet<String> seen = new HashSet<String>();
+				List<String> items = jgitHelper.getBranches();
+				for(String item : items) {
+					if (!item.startsWith(parent)) {
+						continue;
+					}
+					item = StringUtils.removeStart(item, parent + '/');
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading branches", e);
+			}
+
+			return 0;
 		} else if (path.equals("/tag")) {
 			try {
 				List<String> items = jgitHelper.getTags();
@@ -233,9 +272,14 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			return 0;
 		} else if (path.equals("/branch")) {
 			try {
+				HashSet<String> seen = new HashSet<String>();
 				List<String> items = jgitHelper.getBranches();
 				for(String item : items) {
-					filler.add(item);
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
 				}
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading branches", e);
@@ -265,40 +309,50 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 	 * This makes use of the Google Guava LoadingCache features to automatically populate
 	 * entries when they are missing which makes the usage of the cache very simple.
 	 */
-	private LoadingCache<String, byte[]> linkCache = CacheBuilder.newBuilder()
-		       .maximumSize(1000)
-		       .expireAfterWrite(1, TimeUnit.MINUTES)
-		       .build(
-		           new CacheLoader<String, byte[]>() {
-		             @Override
-					public byte[] load(String path) {
-		         		StringBuilder target = new StringBuilder(".." + GitUtils.COMMIT_SLASH);
-		        		try {
-		        			final String commit;
-		        			if(GitUtils.isBranchDir(path)) {
-		        				commit = jgitHelper.getBranchHeadCommit(StringUtils.removeStart(path, GitUtils.BRANCH_SLASH));
-		        			} else if (GitUtils.isTagDir(path)) {
-		        				commit = jgitHelper.getTagHeadCommit(StringUtils.removeStart(path, GitUtils.TAG_SLASH));
-		        			} else if(GitUtils.isRemoteDir(path)) {
-		        				commit = jgitHelper.getRemoteHeadCommit(StringUtils.removeStart(path, GitUtils.REMOTE_SLASH));
-		        			} else {
-		        				String lcommit = jgitHelper.readCommit(path);
-		        				String dir = jgitHelper.readPath(path);
+  private LoadingCache<String, byte[]> linkCache = CacheBuilder.newBuilder()
+      .maximumSize(1000)
+      .expireAfterWrite(1, TimeUnit.MINUTES)
+      .build(new CacheLoader<String, byte[]>() {
+        @Override
+        public byte[] load(String path) {
+          try {
+            final String commit;
+            final String partialPath;
+            if (GitUtils.isBranchDir(path)) {
+              partialPath = StringUtils.removeStart(path, GitUtils.BRANCH_SLASH);
+              commit = jgitHelper.getBranchHeadCommit(partialPath);
+            } else if (GitUtils.isTagDir(path)) {
+              partialPath = StringUtils.removeStart(path, GitUtils.TAG_SLASH);
+              commit = jgitHelper.getTagHeadCommit(partialPath);
+            } else if (GitUtils.isRemoteDir(path)) {
+              partialPath = StringUtils.removeStart(path, GitUtils.REMOTE_SLASH);
+              commit = jgitHelper.getRemoteHeadCommit(partialPath);
+            } else {
+              String lcommit = jgitHelper.readCommit(path);
+              String dir = jgitHelper.readPath(path);
 
-		        				return jgitHelper.readSymlink(lcommit, dir).getBytes();
-		        			}
+              return jgitHelper.readSymlink(lcommit, dir).getBytes();
+            }
 
-		        			if(commit == null) {
-		        				throw new FileNotFoundException("Had unknown tag/branch/remote " + path + " in readlink()");
-		        			}
-		        			target.append(commit.substring(0, 2)).append("/").append(commit.substring(2));
+            if (commit == null) {
+              throw new FileNotFoundException(
+                  "Had unknown tag/branch/remote " + path + " in readlink()");
+            }
+            StringBuilder target = new StringBuilder("..");
+            for (char c : partialPath.toCharArray()) {
+              if (c == '/') {
+                target.append("/..");
+              }
+            }
+            target.append(GitUtils.COMMIT_SLASH);
+            target.append(commit.substring(0, 2)).append("/").append(commit.substring(2));
 
-		        			return target.toString().getBytes();
-		        		} catch (Exception e) {
-		        			throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
-		        		}
-		             }
-		           });
+            return target.toString().getBytes();
+          } catch (Exception e) {
+            throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
+          }
+        }
+      });
 
 	@Override
 	public int readlink(String path, ByteBuffer buffer, long size) {
@@ -352,9 +406,9 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 	}
 
   @Override protected String[] getOptions() {
-    String options =
-           "uid=" + GitUtils.UID
-        + ",gid="+ GitUtils.GID
+    String options = ""
+        + "uid=" + GitUtils.UID
+        + ",gid=" + GitUtils.GID
         + ",allow_other"
         + ",default_permissions"
         + ",kernel_cache"

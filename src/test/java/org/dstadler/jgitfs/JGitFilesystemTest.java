@@ -18,9 +18,12 @@ import net.fusejna.types.TypeMode.NodeType;
 
 import org.dstadler.jgitfs.util.FuseUtils;
 import org.dstadler.jgitfs.util.JGitHelperTest;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -31,6 +34,16 @@ public class JGitFilesystemTest {
 	private static final String DEFAULT_COMMIT_PATH = "/commit/" + DEFAULT_COMMIT_SUB + "/" + DEFAULT_COMMIT_PREFIX;
 
 	private JGitFilesystem fs;
+
+	@BeforeClass
+	public static void setUpClass() throws GitAPIException, IOException {
+		JGitHelperTest.setUpClass();
+	}
+
+	@AfterClass
+	public static void tearDownClass() throws GitAPIException, IOException {
+		JGitHelperTest.tearDownClass();
+	}
 
 	@Before
 	public void setUp() throws IOException {
@@ -77,7 +90,11 @@ public class JGitFilesystemTest {
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr(DEFAULT_COMMIT_PATH + "/README.md", stat));
 		assertEquals(NodeType.FILE, stat.type());
-		assertEquals(0, fs.getattr("/branch/master", stat));
+		assertEquals(0, fs.getattr("/branch/__testbranch", stat));
+		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
+		assertEquals(0, fs.getattr("/branch/__test", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/branch/__test/branch", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
 		assertEquals(0, fs.getattr("/tag/testtag", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
@@ -142,12 +159,16 @@ public class JGitFilesystemTest {
 
 		filledFiles.clear();
 		fs.readdir("/tag", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("testtag"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testtag"));
 
 		filledFiles.clear();
 		fs.readdir("/branch", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("master"));
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("refs_heads_master"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testbranch"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__test"));
+
+		filledFiles.clear();
+		fs.readdir("/branch/__test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("branch"));
 
 		filledFiles.clear();
 		fs.readdir("/remote", filler);
@@ -193,7 +214,7 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		fs.readdir("/tag", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("testtag"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testtag"));
 	}
 
 	@Test
@@ -206,7 +227,7 @@ public class JGitFilesystemTest {
 
 		// for some reason this does not fail, seems the Git repository still works even if closed
 		fs.readdir("/tag", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("testtag"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testtag"));
 	}
 
 	@Test
@@ -215,8 +236,11 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		fs.readdir("/branch", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("master"));
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("refs_heads_master"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testbranch"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__test"));
+
+		fs.readdir("/branch/__test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("branch"));
 	}
 
 	@Test
@@ -243,7 +267,7 @@ public class JGitFilesystemTest {
 	@Test
 	public void testReadLinkTag() {
 		ByteBuffer buffer = ByteBuffer.allocate(100);
-		int readlink = fs.readlink("/tag/testtag", buffer, 100);
+		int readlink = fs.readlink("/tag/__testtag", buffer, 100);
 		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
 
 		String target = new String(buffer.array(), 0, buffer.position());
@@ -253,11 +277,18 @@ public class JGitFilesystemTest {
 	@Test
 	public void testReadLinkBranch() {
 		ByteBuffer buffer = ByteBuffer.allocate(100);
-		int readlink = fs.readlink("/branch/master", buffer, 100);
+		int readlink = fs.readlink("/branch/__testbranch", buffer, 100);
 		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
 
 		String target = new String(buffer.array(), 0, buffer.position());
 		assertTrue("Had: " + target, target.startsWith("../commit"));
+
+		buffer.rewind();
+		readlink = fs.readlink("/branch/__test/branch", buffer, 100);
+		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
+
+		target = new String(buffer.array(), 0, buffer.position());
+		assertTrue("Had: " + target, target.startsWith("../../commit"));
 	}
 
 	@Test
@@ -283,7 +314,7 @@ public class JGitFilesystemTest {
 	public void testReadLinkExceedSize() {
 		ByteBuffer buffer = ByteBuffer.allocate(21);
 		try {
-			fs.readlink("/tag/testtag", buffer, 21);
+			fs.readlink("/tag/__testtag", buffer, 21);
 			fail("Should catch exception here");
 		} catch (BufferOverflowException e) {
 			// expected...
@@ -294,7 +325,7 @@ public class JGitFilesystemTest {
 	public void testReadLinkDifferentSize() {
 		ByteBuffer buffer = ByteBuffer.allocate(21);
 		try {
-			fs.readlink("/tag/testtag", buffer, 30);
+			fs.readlink("/tag/__testtag", buffer, 30);
 			fail("Should catch exception here");
 		} catch (BufferOverflowException e) {
 			// expected...
@@ -436,8 +467,13 @@ public class JGitFilesystemTest {
 		assertEquals(0, fs.readdir("/branch", filler));
 		for(String file : new ArrayList<String>(filledFiles)) {
 			assertEquals(0, fs.getattr("/branch/" + file, stat));
-			assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
-			//fs.readlink("/branch/" + file, ByteBuffer.allocate(capacity), size)
+			if (stat.type() != NodeType.SYMBOLIC_LINK) {
+				assertEquals(NodeType.DIRECTORY, stat.type());
+				filledFiles.clear();
+				for(String subfile : new ArrayList<String>(filledFiles)) {
+					assertEquals(0, fs.getattr("/branch/" + file + "/" + subfile, stat));
+				}
+			}
 		}
 
 		filledFiles.clear();

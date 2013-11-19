@@ -19,10 +19,13 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.NoHeadException;
-import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.After;
+import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -34,6 +37,8 @@ import org.junit.Test;
 public class JGitHelperTest {
 	public final static String DEFAULT_COMMIT = "ede9797616a805d6cbeca376bfbbac9a8b7eb64f";
 
+	private static Git git;
+
 	private JGitHelper helper;
 
 	@BeforeClass
@@ -43,19 +48,27 @@ public class JGitHelperTest {
 		  .readEnvironment() // scan environment GIT_* variables
 		  .findGitDir() // scan up the file system tree
 		  .build();
-		Git git = new Git(repository);
+		git = new Git(repository);
 
-		List<Ref> tags = git.tagList().call();
-		boolean found = false;
-		for(Ref ref : tags) {
-			if(ref.getName().equals("refs/tags/testtag")) {
-				found = true;
-				break;
-			}
+		// a RevWalk allows to walk over commits based on some filtering that is defined
+		RevWalk revWalk = new RevWalk(repository);
+		RevCommit revCommit = revWalk.parseCommit(ObjectId.fromString(DEFAULT_COMMIT));
+
+		git.tag().setName("__testtag").setForceUpdate(true).setObjectId(revCommit).call();
+		git.tag().setName("__test/tag").setForceUpdate(true).setObjectId(revCommit).call();
+		git.branchCreate().setName("__testbranch").setForce(true).setStartPoint(revCommit).call();
+		git.branchCreate().setName("__test/branch").setForce(true).setStartPoint(revCommit).call();
+	}
+
+	@AfterClass
+	public static void tearDownClass() throws GitAPIException, IOException {
+		if (git == null) {
+			return;
 		}
-		if(!found) {
-			git.tag().setName("testtag").call();
-		}
+		git.branchDelete().setBranchNames("__test/branch").setForce(true).call();
+		git.branchDelete().setBranchNames("__testbranch").setForce(true).call();
+		git.tagDelete().setTags("__test/tag").call();
+		git.tagDelete().setTags("__testtag").call();
 	}
 
 	@Before
@@ -241,8 +254,8 @@ public class JGitHelperTest {
 	@Test
 	public void testGetBranchHeadCommit() throws IOException {
 		assertNull(helper.getBranchHeadCommit("somebranch"));
-		assertNotNull(helper.getBranchHeadCommit("master"));
-		assertNotNull(helper.getBranchHeadCommit("refs_heads_master"));
+		assertEquals(DEFAULT_COMMIT, helper.getBranchHeadCommit("__testbranch"));
+		assertEquals(DEFAULT_COMMIT, helper.getBranchHeadCommit("__test/branch"));
 	}
 
 	@Test
@@ -256,8 +269,8 @@ public class JGitHelperTest {
 	public void testGetBranches() throws IOException {
 		List<String> branches = helper.getBranches();
 		assertTrue(branches.size() > 0);
-		assertTrue("Had: " + branches.toString(), branches.contains("master"));
-		assertTrue("Had: " + branches.toString(), branches.contains("refs_heads_master"));
+		assertTrue("Had: " + branches.toString(), branches.contains("__testbranch"));
+		assertTrue("Had: " + branches.toString(), branches.contains("__test/branch"));
 	}
 
 	@Test
@@ -271,16 +284,16 @@ public class JGitHelperTest {
 	@Test
 	public void testGetTagHead() throws IOException {
 		assertNull(helper.getTagHeadCommit("sometag"));
-		assertNotNull(helper.getTagHeadCommit("testtag"));
-		assertNotNull(helper.getTagHeadCommit("refs_tags_testtag"));
+		assertNotNull(helper.getTagHeadCommit("__testtag"));
+		assertNotNull(helper.getTagHeadCommit("refs_tags___testtag"));
 	}
 
 	@Test
 	public void testGetTags() throws IOException {
 		List<String> tags = helper.getTags();
 		assertTrue(tags.size() > 0);
-		assertTrue("Had: " + tags.toString(), tags.contains("testtag"));
-		assertTrue("Had: " + tags.toString(), tags.contains("refs_tags_testtag"));
+		assertTrue("Had: " + tags.toString(), tags.contains("__testtag"));
+		assertTrue("Had: " + tags.toString(), tags.contains("refs_tags___testtag"));
 	}
 
 	@Test

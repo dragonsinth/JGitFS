@@ -75,11 +75,12 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isBranchDir("/tag"));
 		assertFalse(GitUtils.isBranchDir("/commit"));
 		assertFalse(GitUtils.isBranchDir("/branch"));
-		assertFalse(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "00/"));
-		assertFalse(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd/sjwekw"));
-		assertFalse(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
 		assertFalse(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
-		
+
+		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "00/"));
+		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd/sjwekw"));
+		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
+
 		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd"));
 		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "fg"));
 		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "zz"));

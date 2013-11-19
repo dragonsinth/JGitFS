@@ -222,43 +222,36 @@ public class JGitHelper implements Closeable {
 	}
 
 	/**
-	 * Return all local branches, excluding any remote branches.
+	 * Return all local branches under refs/heads.
 	 *
-	 * To ease implementation, slashes in branch-names are replaced by underscore. Also
-	 * entries starting with refs/heads/ are listed with their short name as well
 	 *
 	 * @return A list of branch-names
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getBranches() throws IOException {
-		final List<Ref> brancheRefs = readBranches();
-		List<String> branches = new ArrayList<String>();
-		for(Ref ref : brancheRefs) {
-			String name = adjustName(ref.getName());
-			branches.add(name);
-			if(name.startsWith("refs_heads_")) {
-				branches.add(StringUtils.removeStart(name, "refs_heads_"));
+		final List<Ref> branches = readBranches();
+		List<String> results = new ArrayList<String>();
+		for(Ref ref : branches) {
+			String name = ref.getName();
+			if(name.startsWith("refs/heads/")) {
+				results.add(StringUtils.removeStart(name, "refs/heads/"));
 			}
 		}
-		return branches;
+		return results;
 	}
 
 	/**
 	 * Return the commit-id for the given branch.
 	 *
-	 * To ease implementation, slashes in branch-names are replaced by underscore. Also
-	 * entries starting with refs/heads/ are listed with their short name as well
-	 *
-	 * @param branch The branch to read data for, both the short-name and the name with refs/heads/... is possible
+	 * @param branch The branch to read data for, should start with refs/heads/...
 	 * @return A commit-id if found or null if not found.
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getBranchHeadCommit(String branch) throws IOException {
-		final List<Ref> branchRefs = readBranches();
-		for(Ref ref : branchRefs) {
-			String name = adjustName(ref.getName());
-			//System.out.println("Had branch: " + name);
-			if(name.equals(branch) || name.equals("refs_heads_" + branch)) {
+		branch = "refs/heads/" + branch;
+		final List<Ref> branches = readBranches();
+		for(Ref ref : branches) {
+			if (branch.equals(ref.getName())) {
 				return ref.getObjectId().getName();
 			}
 		}
@@ -267,13 +260,11 @@ public class JGitHelper implements Closeable {
 	}
 
 	private List<Ref> readBranches() throws IOException {
-		final List<Ref> branchRefs;
 		try {
-			branchRefs = git.branchList().setListMode(null).call();
+			return git.branchList().setListMode(null).call();
 		} catch (GitAPIException e) {
 			throw new IOException("Had error while reading the list of branches from the Git repository", e);
 		}
-		return branchRefs;
 	}
 
 
