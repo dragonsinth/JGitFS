@@ -117,8 +117,8 @@ public class JGitHelper implements Closeable {
 		// set time and user-id/group-id
 		stat.ctime(revCommit.getCommitTime());
 		stat.mtime(revCommit.getCommitTime());
-		stat.uid(GitUtils.UID);
-		stat.gid(GitUtils.GID);
+		//stat.uid(GitUtils.UID);
+		//stat.gid(GitUtils.GID);
 
 		// now read the file/directory attributes
 		TreeWalk treeWalk = buildTreeWalk(tree, path);
@@ -127,16 +127,13 @@ public class JGitHelper implements Closeable {
 				fileMode.equals(FileMode.REGULAR_FILE)) {
 			ObjectLoader loader = repository.open(treeWalk.getObjectId(0));
 			stat.size(loader.getSize());
-			stat.setMode(NodeType.FILE,
-					true, false, fileMode.equals(FileMode.EXECUTABLE_FILE),
-					true, false, fileMode.equals(FileMode.EXECUTABLE_FILE),
-					false, false, false);
+			stat.setMode(NodeType.FILE, true, false, fileMode.equals(FileMode.EXECUTABLE_FILE));
 			return;
 		} else if(fileMode.equals(FileMode.TREE)) {
-			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, false, false, false);
+			stat.setMode(NodeType.DIRECTORY, true, false, true);
 			return;
 		} if(fileMode.equals(FileMode.SYMLINK)) {
-			stat.setMode(NodeType.SYMBOLIC_LINK, true, false, true, true, false, true, false, false, false);
+			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
 			return;
 		}
 

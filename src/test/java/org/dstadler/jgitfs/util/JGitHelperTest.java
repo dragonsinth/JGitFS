@@ -150,7 +150,7 @@ public class JGitHelperTest {
 		assertEquals(NodeType.FILE, wrapper.type());
 		assertTrue((wrapper.mode() & TypeMode.S_IXUSR) != 0);
 		assertTrue((wrapper.mode() & TypeMode.S_IXGRP) != 0);
-		assertTrue((wrapper.mode() & TypeMode.S_IXOTH) == 0);
+		assertTrue((wrapper.mode() & TypeMode.S_IXOTH) != 0);
 	}
 
 	private StatWrapper getStatsWrapper() {

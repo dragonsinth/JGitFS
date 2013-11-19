@@ -90,7 +90,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		if(DIRS.contains(path) || GitUtils.isCommitSub(path) || GitUtils.isCommitDir(path)) {
 			//stat.uid(GitUtils.UID);
 			//stat.gid(GitUtils.GID);
-			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, false, false, false);
+			stat.setMode(NodeType.DIRECTORY, true, false, true);
 			return 0;
 		} else if (GitUtils.isCommitSubDir(path)) {
 			// for actual entries for a commit we need to read the file-type information from Git
@@ -109,7 +109,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			// entries under /branch and /tag are always symbolic links
 			//stat.uid(GitUtils.UID);
 			//stat.gid(GitUtils.GID);
-			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true, true, true, true, true, true, true);
+			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
 			return 0;
 		}
 
@@ -355,6 +355,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
     String options =
            "uid=" + GitUtils.UID
         + ",gid="+ GitUtils.GID
+        + ",allow_other"
         + ",default_permissions"
         + ",kernel_cache"
         + ",entry_timeout=10"
