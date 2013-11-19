@@ -1,3 +1,6 @@
-bin
-build
-.gradle
+bin/
+build/
+.gradle/
+.idea/
+target/
+hs_err_pid*.log
