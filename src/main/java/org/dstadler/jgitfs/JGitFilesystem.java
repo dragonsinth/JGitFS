@@ -88,6 +88,8 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 	{
 		// known entries and directories beneath /commit are always directories
 		if(DIRS.contains(path) || GitUtils.isCommitSub(path) || GitUtils.isCommitDir(path)) {
+			//stat.uid(GitUtils.UID);
+			//stat.gid(GitUtils.GID);
 			stat.setMode(NodeType.DIRECTORY, true, false, true, true, false, true, false, false, false);
 			return 0;
 		} else if (GitUtils.isCommitSubDir(path)) {
@@ -105,6 +107,8 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			return 0;
 		} else if (GitUtils.isBranchDir(path) || GitUtils.isTagDir(path) || GitUtils.isRemoteDir(path)) {
 			// entries under /branch and /tag are always symbolic links
+			//stat.uid(GitUtils.UID);
+			//stat.gid(GitUtils.GID);
 			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true, true, true, true, true, true, true);
 			return 0;
 		}
@@ -342,8 +346,20 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 
 		try {
 			unmount();
-		} catch (FuseException e) {
-			throw new IOException(e);
+		} catch (FuseException ignored) {
+			// ignore, will mask active exception
 		}
 	}
+
+  @Override protected String[] getOptions() {
+    String options =
+           "uid=" + GitUtils.UID
+        + ",gid="+ GitUtils.GID
+        + ",default_permissions"
+        + ",kernel_cache"
+        + ",entry_timeout=10"
+        + ",negative_timeout=10"
+        + ",attr_timeout=10";
+    return new String[] {"-r", "-o", options};
+  }
 }
