@@ -84,6 +84,17 @@
       <groupId>org.eclipse.jgit</groupId>
       <artifactId>org.eclipse.jgit</artifactId>
       <version>3.1.0.201310021548-r</version>
+      <exclusions>
+        <!-- Not needed by the small subset of JGit we're currently using. -->
+        <exclusion>
+          <groupId>com.jcraft</groupId>
+          <artifactId>jsch</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>com.googlecode.javaewah</groupId>
+          <artifactId>JavaEWAH</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>com.google.guava</groupId>
