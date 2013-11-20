@@ -26,7 +26,7 @@ public class GitUtils {
 	public final static long UID = getUID();
 	public final static long GID = getGID();
 	
-	private final static Pattern TAG_PATTERN = Pattern.compile("/tag/[^/]+");
+	private final static Pattern TAG_PATTERN = Pattern.compile("/tag/.+");
 	private final static Pattern BRANCH_PATTERN = Pattern.compile("/branch/.+");
 	private final static Pattern REMOTE_PATTERN = Pattern.compile("/remote/[^/]+");
 	private final static Pattern COMMIT_SUB_PATTERN = Pattern.compile("/commit/[a-f0-9]{2}");

@@ -98,10 +98,11 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isTagDir("/branch"));
 		assertFalse(GitUtils.isTagDir("/commit"));
 		assertFalse(GitUtils.isTagDir("/tag"));
-		assertFalse(GitUtils.isTagDir(GitUtils.TAG_SLASH + "00/"));
-		assertFalse(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd/sjwekw"));
-		assertFalse(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
 		assertFalse(GitUtils.isTagDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
+
+		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "00/"));
+		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd/sjwekw"));
+		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
 
 		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd"));
 		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "fg"));

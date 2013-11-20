@@ -96,7 +96,11 @@ public class JGitFilesystemTest {
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/branch/__test/branch", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
-		assertEquals(0, fs.getattr("/tag/testtag", stat));
+		assertEquals(0, fs.getattr("/tag/__testtag", stat));
+		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
+		assertEquals(0, fs.getattr("/tag/__test", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/tag/__test/tag", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
 		assertEquals(0, fs.getattr("/remote/origin_master", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
@@ -160,6 +164,11 @@ public class JGitFilesystemTest {
 		filledFiles.clear();
 		fs.readdir("/tag", filler);
 		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testtag"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__test"));
+
+		filledFiles.clear();
+		fs.readdir("/tag/__test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("tag"));
 
 		filledFiles.clear();
 		fs.readdir("/branch", filler);
@@ -215,6 +224,10 @@ public class JGitFilesystemTest {
 
 		fs.readdir("/tag", filler);
 		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__testtag"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__test"));
+
+		fs.readdir("/tag/__test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("tag"));
 	}
 
 	@Test
@@ -272,6 +285,13 @@ public class JGitFilesystemTest {
 
 		String target = new String(buffer.array(), 0, buffer.position());
 		assertTrue("Had: " + target, target.startsWith("../commit"));
+
+		buffer.rewind();
+		readlink = fs.readlink("/tag/__test/tag", buffer, 100);
+		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
+
+		target = new String(buffer.array(), 0, buffer.position());
+		assertTrue("Had: " + target, target.startsWith("../../commit"));
 	}
 
 	@Test

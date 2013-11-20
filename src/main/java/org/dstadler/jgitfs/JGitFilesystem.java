@@ -123,6 +123,24 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading branches", e);
 			}
+		} else if (GitUtils.isTagDir(path)) {
+			String tag = StringUtils.removeStart(path, "/tag/");
+			try {
+				List<String> items = jgitHelper.getTags();
+				for(String item : items) {
+					if (item.equals(tag)) {
+						// Exact match
+						stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
+						return 0;
+					} else if (item.startsWith(tag) && item.startsWith(tag + "/")) {
+						// It's a directory containing branches.
+						stat.setMode(NodeType.DIRECTORY, true, false, true);
+						return 0;
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading branches", e);
+			}
 		} else if (GitUtils.isTagDir(path) || GitUtils.isRemoteDir(path)) {
 			// entries under /branch and /tag are always symbolic links
 			//stat.uid(GitUtils.UID);
@@ -259,11 +277,37 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			}
 
 			return 0;
-		} else if (path.equals("/tag")) {
+		} else if (GitUtils.isTagDir(path)) {
 			try {
+				String parent = StringUtils.removeStart(path, "/tag/");
+				HashSet<String> seen = new HashSet<String>();
 				List<String> items = jgitHelper.getTags();
 				for(String item : items) {
-					filler.add(item);
+					if (!item.startsWith(parent)) {
+						continue;
+					}
+					item = StringUtils.removeStart(item, parent + '/');
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading tags", e);
+			}
+
+			return 0;
+		} else if (path.equals("/tag")) {
+			try {
+				HashSet<String> seen = new HashSet<String>();
+				List<String> items = jgitHelper.getTags();
+				for(String item : items) {
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
 				}
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading tags", e);

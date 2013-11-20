@@ -285,7 +285,7 @@ public class JGitHelperTest {
 	public void testGetTagHead() throws IOException {
 		assertNull(helper.getTagHeadCommit("sometag"));
 		assertNotNull(helper.getTagHeadCommit("__testtag"));
-		assertNotNull(helper.getTagHeadCommit("refs_tags___testtag"));
+		assertNotNull(helper.getTagHeadCommit("__test/tag"));
 	}
 
 	@Test
@@ -293,7 +293,7 @@ public class JGitHelperTest {
 		List<String> tags = helper.getTags();
 		assertTrue(tags.size() > 0);
 		assertTrue("Had: " + tags.toString(), tags.contains("__testtag"));
-		assertTrue("Had: " + tags.toString(), tags.contains("refs_tags___testtag"));
+		assertTrue("Had: " + tags.toString(), tags.contains("__test/tag"));
 	}
 
 	@Test

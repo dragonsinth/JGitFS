@@ -326,41 +326,33 @@ public class JGitHelper implements Closeable {
 	/**
 	 * Return all tags.
 	 *
-	 * To ease implementation, slashes in branch-names are replaced by underscore. Also
-	 * entries starting with refs/tags/ are listed with their short name as well
-	 *
-	 * @return A list of branch-names
+	 * @return A list of tag-names
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getTags() throws IOException {
-		List<Ref> tagRefs = readTags();
-		List<String> tags = new ArrayList<String>();
-		for(Ref ref : tagRefs) {
-			String name = adjustName(ref.getName());
-			tags.add(name);
-			if(name.startsWith("refs_tags_")) {
-				tags.add(StringUtils.removeStart(name, "refs_tags_"));
+		List<Ref> tags = readTags();
+		List<String> results = new ArrayList<String>();
+		for(Ref ref : tags) {
+			String name = ref.getName();
+			if(name.startsWith("refs/tags/")) {
+				results.add(StringUtils.removeStart(name, "refs/tags/"));
 			}
 		}
-		return tags;
+		return results;
 	}
 
 	/**
 	 * Return the commit-id for the given tag.
 	 *
-	 * To ease implementation, slashes in tag-names are replaced by underscore. Also
-	 * entries starting with refs/tags/ are listed with their short name as well
-	 *
-	 * @param tag The tag to read data for, both the short-name and the name with refs/tags/... is possible
+	 * @param tag The tag to read data for, should start with refs/tags/...
 	 * @return A commit-id if found or null if not found.
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getTagHeadCommit(String tag) throws IOException {
+		tag = "refs/tags/" + tag;
 		List<Ref> tagRefs = readTags();
-		for(Ref ref : tagRefs) {
-			String name = adjustName(ref.getName());
-			//System.out.println("Had tag: " + name);
-			if(name.equals(tag) || name.equals("refs_tags_" + tag)) {
+		for (Ref ref : tagRefs) {
+			if (tag.equals(ref.getName())) {
 				return ref.getObjectId().getName();
 			}
 		}
@@ -369,13 +361,11 @@ public class JGitHelper implements Closeable {
 	}
 
 	private List<Ref> readTags() throws IOException {
-		final List<Ref> tagRefs;
 		try {
-			tagRefs = git.tagList().call();
+			return git.tagList().call();
 		} catch (GitAPIException e) {
 			throw new IOException("Had error while reading the list of tags from the Git repository", e);
 		}
-		return tagRefs;
 	}
 
 	private String adjustName(String name) {
