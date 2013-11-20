@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -19,8 +20,6 @@ import net.fusejna.types.TypeMode.NodeType;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.ListBranchCommand.ListMode;
-import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.FileMode;
@@ -222,22 +221,29 @@ public class JGitHelper implements Closeable {
 	}
 
 	/**
-	 * Return all local branches under refs/heads.
-	 *
+	 * Return all remote branches.
 	 *
 	 * @return A list of branch-names
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getBranches() throws IOException {
-		final List<Ref> branches = readBranches();
-		List<String> results = new ArrayList<String>();
-		for(Ref ref : branches) {
-			String name = ref.getName();
-			if(name.startsWith("refs/heads/")) {
-				results.add(StringUtils.removeStart(name, "refs/heads/"));
-			}
+		return getBranches("");
+	}
+
+	/**
+	 * Return all branches matching the given prefix.
+	 *
+	 * @return A list of branch-names
+	 * @throws IOException If accessing the Git repository fails
+	 */
+	public List<String> getBranches(String prefix) throws IOException {
+		if (prefix.length() > 0) {
+			prefix += '/';
 		}
-		return results;
+		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/heads/" + prefix);
+		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
+		Collections.sort(result);
+		return result;
 	}
 
 	/**
@@ -248,25 +254,12 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getBranchHeadCommit(String branch) throws IOException {
-		branch = "refs/heads/" + branch;
-		final List<Ref> branches = readBranches();
-		for(Ref ref : branches) {
-			if (branch.equals(ref.getName())) {
-				return ref.getObjectId().getName();
-			}
+		Ref ref = git.getRepository().getRef("refs/heads/" + branch);
+		if (ref == null) {
+			return null;
 		}
-
-		return null;
+		return ref.getObjectId().getName();
 	}
-
-	private List<Ref> readBranches() throws IOException {
-		try {
-			return git.branchList().setListMode(null).call();
-		} catch (GitAPIException e) {
-			throw new IOException("Had error while reading the list of branches from the Git repository", e);
-		}
-	}
-
 
 	/**
 	 * Return all remote branches.
@@ -275,15 +268,23 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getRemotes() throws IOException {
-		final List<Ref> remoteBranches = readRemotes();
-		List<String> results = new ArrayList<String>();
-		for(Ref ref : remoteBranches) {
-			String name = ref.getName();
-			if(name.startsWith("refs/remotes/")) {
-				results.add(StringUtils.removeStart(name, "refs/remotes/"));
-			}
+		return getRemotes("");
+	}
+
+	/**
+	 * Return all remote branches matching the given prefix.
+	 *
+	 * @return A list of remote branch-names
+	 * @throws IOException If accessing the Git repository fails
+	 */
+	public List<String> getRemotes(String prefix) throws IOException {
+		if (prefix.length() > 0) {
+			prefix += '/';
 		}
-		return results;
+		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/remotes/" + prefix);
+		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
+		Collections.sort(result);
+		return result;
 	}
 
 	/**
@@ -294,23 +295,11 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getRemoteHeadCommit(String branch) throws IOException {
-		branch = "refs/remotes/" + branch;
-		final List<Ref> branchRefs = readRemotes();
-		for(Ref ref : branchRefs) {
-			if (branch.equals(ref.getName())) {
-				return ref.getObjectId().getName();
-			}
+		Ref ref = git.getRepository().getRefDatabase().getRef("refs/remotes/" + branch);
+		if (ref == null) {
+			return null;
 		}
-
-		return null;
-	}
-
-	private List<Ref> readRemotes() throws IOException {
-		try {
-			return git.branchList().setListMode(ListMode.REMOTE).call();
-		} catch (GitAPIException e) {
-			throw new IOException("Had error while reading the list of remote branches/tags from the Git repository", e);
-		}
+		return ref.getObjectId().getName();
 	}
 
 	/**
@@ -320,15 +309,23 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getTags() throws IOException {
-		List<Ref> tags = readTags();
-		List<String> results = new ArrayList<String>();
-		for(Ref ref : tags) {
-			String name = ref.getName();
-			if(name.startsWith("refs/tags/")) {
-				results.add(StringUtils.removeStart(name, "refs/tags/"));
-			}
+		return getTags("");
+	}
+
+	/**
+	 * Return all tags matching the given prefix.
+	 *
+	 * @return A list of tag-names
+	 * @throws IOException If accessing the Git repository fails
+	 */
+	public List<String> getTags(String prefix) throws IOException {
+		if (prefix.length() > 0) {
+			prefix += '/';
 		}
-		return results;
+		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/tags/" + prefix);
+		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
+		Collections.sort(result);
+		return result;
 	}
 
 	/**
@@ -339,28 +336,11 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getTagHeadCommit(String tag) throws IOException {
-		tag = "refs/tags/" + tag;
-		List<Ref> tagRefs = readTags();
-		for (Ref ref : tagRefs) {
-			if (tag.equals(ref.getName())) {
-				return ref.getObjectId().getName();
-			}
+		Ref ref = git.getRepository().getRef("refs/tags/" + tag);
+		if (ref == null) {
+			return null;
 		}
-
-		return null;
-	}
-
-	private List<Ref> readTags() throws IOException {
-		try {
-			return git.tagList().call();
-		} catch (GitAPIException e) {
-			throw new IOException("Had error while reading the list of tags from the Git repository", e);
-		}
-	}
-
-	private String adjustName(String name) {
-		// TODO: handle tags with slash as subdirs instead of replacing with underscore
-		return name.replace("/", "_");
+		return ref.getObjectId().getName();
 	}
 
 	/**
