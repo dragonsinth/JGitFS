@@ -121,10 +121,11 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isRemoteDir("/branch"));
 		assertFalse(GitUtils.isRemoteDir("/commit"));
 		assertFalse(GitUtils.isRemoteDir("/tag"));
-		assertFalse(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "00/"));
-		assertFalse(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd/sjwekw"));
-		assertFalse(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
 		assertFalse(GitUtils.isRemoteDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
+
+		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "00/"));
+		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd/sjwekw"));
+		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd_aldsjfasd asdlkjasdj.,.;_:;:öÖLP\"=)==\"§\"§%/\"!§)$§\""));
 
 		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd"));
 		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "fg"));

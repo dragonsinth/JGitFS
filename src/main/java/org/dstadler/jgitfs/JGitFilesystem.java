@@ -141,12 +141,24 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading branches", e);
 			}
-		} else if (GitUtils.isTagDir(path) || GitUtils.isRemoteDir(path)) {
-			// entries under /branch and /tag are always symbolic links
-			//stat.uid(GitUtils.UID);
-			//stat.gid(GitUtils.GID);
-			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
-			return 0;
+		} else if (GitUtils.isRemoteDir(path)) {
+			String branch = StringUtils.removeStart(path, "/remote/");
+			try {
+				List<String> items = jgitHelper.getRemotes();
+				for(String item : items) {
+					if (item.equals(branch)) {
+						// Exact match
+						stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
+						return 0;
+					} else if (item.startsWith(branch) && item.startsWith(branch + "/")) {
+						// It's a directory containing branches.
+						stat.setMode(NodeType.DIRECTORY, true, false, true);
+						return 0;
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading branches", e);
+			}
 		}
 
 		// all others are reported as "not found"
@@ -298,6 +310,27 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			}
 
 			return 0;
+		} else if (GitUtils.isRemoteDir(path)) {
+			try {
+				String parent = StringUtils.removeStart(path, "/remote/");
+				HashSet<String> seen = new HashSet<String>();
+				List<String> items = jgitHelper.getRemotes();
+				for(String item : items) {
+					if (!item.startsWith(parent)) {
+						continue;
+					}
+					item = StringUtils.removeStart(item, parent + '/');
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading tags", e);
+			}
+
+			return 0;
 		} else if (path.equals("/tag")) {
 			try {
 				HashSet<String> seen = new HashSet<String>();
@@ -332,9 +365,14 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			return 0;
 		} else if (path.equals("/remote")) {
 			try {
+				HashSet<String> seen = new HashSet<String>();
 				List<String> items = jgitHelper.getRemotes();
 				for(String item : items) {
-					filler.add(item);
+					item = StringUtils.substringBefore(item, "/");
+					if (!seen.contains(item)) {
+						filler.add(item);
+						seen.add(item);
+					}
 				}
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading remotes", e);

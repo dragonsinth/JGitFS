@@ -269,43 +269,35 @@ public class JGitHelper implements Closeable {
 
 
 	/**
-	 * Return all remote branches and tags.
+	 * Return all remote branches.
 	 *
-	 * To ease implementation, slashes in names are replaced by underscore. Also
-	 * entries starting with refs/remotes/ are listed with their short name as well
-	 *
-	 * @return A list of remote-names
+	 * @return A list of remote branch-names
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getRemotes() throws IOException {
-		final List<Ref> remoteRefs = readRemotes();
-		List<String> remotes = new ArrayList<String>();
-		for(Ref ref : remoteRefs) {
-			String name = adjustName(ref.getName());
-			remotes.add(name);
-			if(name.startsWith("refs_remotes_")) {
-				remotes.add(StringUtils.removeStart(name, "refs_remotes_"));
+		final List<Ref> remoteBranches = readRemotes();
+		List<String> results = new ArrayList<String>();
+		for(Ref ref : remoteBranches) {
+			String name = ref.getName();
+			if(name.startsWith("refs/remotes/")) {
+				results.add(StringUtils.removeStart(name, "refs/remotes/"));
 			}
 		}
-		return remotes;
+		return results;
 	}
 
 	/**
-	 * Return the commit-id for the given remote.
+	 * Return the commit-id for the given remote branch.
 	 *
-	 * To ease implementation, slashes in names are replaced by underscore. Also
-	 * entries starting with refs/remotes/ are listed with their short name as well
-	 *
-	 * @param remote The remote name to read data for, both the short-name and the name with refs/remotes/... is possible
+	 * @param branch The remote branch name to read data for, should start with refs/remotes/...
 	 * @return A commit-id if found or null if not found.
 	 * @throws IOException If accessing the Git repository fails
 	 */
-	public String getRemoteHeadCommit(String remote) throws IOException {
-		final List<Ref> remoteRefs = readRemotes();
-		for(Ref ref : remoteRefs) {
-			String name = adjustName(ref.getName());
-			//System.out.println("Had branch: " + name);
-			if(name.equals(remote) || name.equals("refs_remotes_" + remote)) {
+	public String getRemoteHeadCommit(String branch) throws IOException {
+		branch = "refs/remotes/" + branch;
+		final List<Ref> branchRefs = readRemotes();
+		for(Ref ref : branchRefs) {
+			if (branch.equals(ref.getName())) {
 				return ref.getObjectId().getName();
 			}
 		}
@@ -314,13 +306,11 @@ public class JGitHelper implements Closeable {
 	}
 
 	private List<Ref> readRemotes() throws IOException {
-		final List<Ref> remoteRefs;
 		try {
-			remoteRefs = git.branchList().setListMode(ListMode.REMOTE).call();
+			return git.branchList().setListMode(ListMode.REMOTE).call();
 		} catch (GitAPIException e) {
 			throw new IOException("Had error while reading the list of remote branches/tags from the Git repository", e);
 		}
-		return remoteRefs;
 	}
 
 	/**

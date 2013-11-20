@@ -20,6 +20,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
@@ -58,6 +59,14 @@ public class JGitHelperTest {
 		git.tag().setName("__test/tag").setForceUpdate(true).setObjectId(revCommit).call();
 		git.branchCreate().setName("__testbranch").setForce(true).setStartPoint(revCommit).call();
 		git.branchCreate().setName("__test/branch").setForce(true).setStartPoint(revCommit).call();
+
+		RefUpdate update = git.getRepository().updateRef("refs/remotes/__origin/testbranch");
+		update.setNewObjectId(revCommit);
+		update.forceUpdate();
+
+		update = git.getRepository().updateRef("refs/remotes/__origin/test/branch");
+		update.setNewObjectId(revCommit);
+		update.forceUpdate();
 	}
 
 	@AfterClass
@@ -69,6 +78,14 @@ public class JGitHelperTest {
 		git.branchDelete().setBranchNames("__testbranch").setForce(true).call();
 		git.tagDelete().setTags("__test/tag").call();
 		git.tagDelete().setTags("__testtag").call();
+
+		RefUpdate update = git.getRepository().updateRef("refs/remotes/__origin/testbranch");
+		update.setForceUpdate(true);
+		update.delete();
+
+		update = git.getRepository().updateRef("refs/remotes/__origin/test/branch");
+		update.setForceUpdate(true);
+		update.delete();
 	}
 
 	@Before
@@ -261,8 +278,8 @@ public class JGitHelperTest {
 	@Test
 	public void testGetRemoteHeadCommit() throws IOException {
 		assertNull(helper.getRemoteHeadCommit("somebranch"));
-		assertNotNull(helper.getRemoteHeadCommit("origin_master"));
-		assertNotNull(helper.getRemoteHeadCommit("refs_remotes_origin_master"));
+		assertNotNull(helper.getRemoteHeadCommit("__origin/testbranch"));
+		assertNotNull(helper.getRemoteHeadCommit("__origin/test/branch"));
 	}
 
 	@Test
@@ -277,8 +294,8 @@ public class JGitHelperTest {
 	public void testGetRemotes() throws IOException {
 		List<String> remotes = helper.getRemotes();
 		assertTrue(remotes.size() > 0);
-		assertTrue("Had: " + remotes.toString(), remotes.contains("origin_master"));
-		assertTrue("Had: " + remotes.toString(), remotes.contains("refs_remotes_origin_master"));
+		assertTrue("Had: " + remotes.toString(), remotes.contains("__origin/testbranch"));
+		assertTrue("Had: " + remotes.toString(), remotes.contains("__origin/test/branch"));
 	}
 
 	@Test

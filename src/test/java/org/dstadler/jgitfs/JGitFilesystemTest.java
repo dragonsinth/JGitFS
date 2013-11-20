@@ -102,7 +102,13 @@ public class JGitFilesystemTest {
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/tag/__test/tag", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
-		assertEquals(0, fs.getattr("/remote/origin_master", stat));
+		assertEquals(0, fs.getattr("/remote/__origin", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/remote/__origin/testbranch", stat));
+		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
+		assertEquals(0, fs.getattr("/remote/__origin/test", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/remote/__origin/test/branch", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
 
 		// invalid file-name causes IllegalStateException
@@ -181,8 +187,16 @@ public class JGitFilesystemTest {
 
 		filledFiles.clear();
 		fs.readdir("/remote", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("origin_master"));
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("refs_remotes_origin_master"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__origin"));
+
+		filledFiles.clear();
+		fs.readdir("/remote/__origin", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("testbranch"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("test"));
+
+		filledFiles.clear();
+		fs.readdir("/remote/__origin/test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("branch"));
 
 		filledFiles.clear();
 		fs.readdir("/commit", filler);
@@ -262,8 +276,16 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		fs.readdir("/remote", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("origin_master"));
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("refs_remotes_origin_master"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("__origin"));
+
+		filledFiles.clear();
+		fs.readdir("/remote/__origin", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("testbranch"));
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("test"));
+
+		filledFiles.clear();
+		fs.readdir("/remote/__origin/test", filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("branch"));
 	}
 
 	@Test
@@ -314,11 +336,18 @@ public class JGitFilesystemTest {
 	@Test
 	public void testReadLinkRemote() {
 		ByteBuffer buffer = ByteBuffer.allocate(100);
-		int readlink = fs.readlink("/remote/origin_master", buffer, 100);
+		int readlink = fs.readlink("/remote/__origin/testbranch", buffer, 100);
 		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
 
 		String target = new String(buffer.array(), 0, buffer.position());
-		assertTrue("Had: " + target, target.startsWith("../commit"));
+		assertTrue("Had: " + target, target.startsWith("../../commit"));
+
+		buffer.rewind();
+		readlink = fs.readlink("/remote/__origin/test/branch", buffer, 100);
+		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), 0, readlink);
+
+		target = new String(buffer.array(), 0, buffer.position());
+		assertTrue("Had: " + target, target.startsWith("../../../commit"));
 	}
 
 	@Test
@@ -500,7 +529,7 @@ public class JGitFilesystemTest {
 		assertEquals(0, fs.readdir("/remote", filler));
 		for(String file : new ArrayList<String>(filledFiles)) {
 			assertEquals(0, fs.getattr("/remote/" + file, stat));
-			assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
+			assertEquals(NodeType.DIRECTORY, stat.type());
 			//fs.readlink("/branch/" + file, ByteBuffer.allocate(capacity), size)
 		}
 	}
@@ -575,11 +604,11 @@ public class JGitFilesystemTest {
 	@Test
 	public void testWithTestDataRemote() {
 		ByteBuffer buffer = ByteBuffer.allocate(1000);
-		assertEquals(0, fs.readlink("/remote/origin_master", buffer, 1000));
+		assertEquals(0, fs.readlink("/remote/origin/master", buffer, 1000));
 		assertEquals("A commit-ish link should be written to the buffer, but had: " + new String(buffer.array(), 0, buffer.position()), 
-				1000-51, buffer.remaining());
+				1000-54, buffer.remaining());
 		// e.g. ../commit/43/27273e69afcd040ba1b4d3766ea1f43e0024f3
-		String commit = new String(buffer.array(), 0, buffer.position()).substring(2);
+		String commit = new String(buffer.array(), 0, buffer.position()).substring(5);
 		
 		// check that the test-data is there
 		final List<String> filledFiles = new ArrayList<String>();
