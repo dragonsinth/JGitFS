@@ -30,23 +30,23 @@ public class GitUtils {
 	private final static Pattern TREE_PATTERN = Pattern.compile("/tree/[a-z0-9]{40}(/.+)?");
 
 	public static boolean isTagDir(final String path) {
-		return TAG_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+		return TAG_PATTERN.matcher(path).matches();
 	}
 
 	public static boolean isBranchDir(final String path) {
-		return BRANCH_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+		return BRANCH_PATTERN.matcher(path).matches();
 	}
 
 	public static boolean isRemoteDir(final String path) {
-		return REMOTE_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+		return REMOTE_PATTERN.matcher(path).matches();
 	}
 
 	public static boolean isCommitDir(final String path) {
-		return COMMIT_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+		return COMMIT_PATTERN.matcher(path).matches();
 	}
 
 	public static boolean isTreeDir(final String path) {
-		return TREE_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+		return TREE_PATTERN.matcher(path).matches();
 	}
 
 	public static long getUID() {

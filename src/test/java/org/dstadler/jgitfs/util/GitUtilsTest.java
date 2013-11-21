@@ -61,7 +61,6 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isBranchDir("/tag"));
 		assertFalse(GitUtils.isBranchDir("/commit"));
 		assertFalse(GitUtils.isBranchDir("/branch"));
-		assertFalse(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
 
 		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "00/"));
 		assertTrue(GitUtils.isBranchDir(GitUtils.BRANCH_SLASH + "asdfasd/sjwekw"));
@@ -84,7 +83,6 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isTagDir("/branch"));
 		assertFalse(GitUtils.isTagDir("/commit"));
 		assertFalse(GitUtils.isTagDir("/tag"));
-		assertFalse(GitUtils.isTagDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
 
 		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "00/"));
 		assertTrue(GitUtils.isTagDir(GitUtils.TAG_SLASH + "asdfasd/sjwekw"));
@@ -107,7 +105,6 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isRemoteDir("/branch"));
 		assertFalse(GitUtils.isRemoteDir("/commit"));
 		assertFalse(GitUtils.isRemoteDir("/tag"));
-		assertFalse(GitUtils.isRemoteDir(GitUtils.BRANCH_SLASH + "ae/.hidden"));
 
 		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "00/"));
 		assertTrue(GitUtils.isRemoteDir(GitUtils.REMOTE_SLASH + "asdfasd/sjwekw"));

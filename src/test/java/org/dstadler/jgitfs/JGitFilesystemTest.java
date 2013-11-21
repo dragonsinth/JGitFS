@@ -119,13 +119,6 @@ public class JGitFilesystemTest {
 		assertEquals(-ErrorCodes.ENOENT(), fs.getattr(path, stat));
 		// invalid top-level-dir causes ENOENT
 		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/notexistingmain", stat));
-		
-		// hidden dirs are not found and not printed to stdout
-		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/.Trash", stat));
-		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/tag/123/.hidden", stat));
-		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/branch/123/.hidden", stat));
-		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/remote/123/.hidden", stat));
-		assertEquals(-ErrorCodes.ENOENT(), fs.getattr("/master/some/file/direct/.hidden", stat));
 	}
 
 	@Test
