@@ -8,25 +8,8 @@ import java.io.IOException;
 import org.junit.Test;
 
 
-public class GitUtilsTest {
 
-	@Test
-	public void testIsCommitSub() {
-		assertFalse(GitUtils.isCommitSub(""));
-		assertFalse(GitUtils.isCommitSub("/"));
-		assertFalse(GitUtils.isCommitSub("/something"));
-		assertFalse(GitUtils.isCommitSub("/branch"));
-		assertFalse(GitUtils.isCommitSub("/tag"));
-		assertFalse(GitUtils.isCommitSub("/commit"));
-		assertFalse(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "00/"));
-		assertFalse(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "0g"));
-		assertFalse(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "fg"));
-		assertFalse(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "zz"));
-		
-		assertTrue(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "00"));
-		assertTrue(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "ff"));
-		assertTrue(GitUtils.isCommitSub(GitUtils.COMMIT_SLASH + "ae"));
-	}
+public class GitUtilsTest {
 
 	@Test
 	public void testIsCommitDir() {
@@ -42,31 +25,13 @@ public class GitUtilsTest {
 		assertFalse(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "zz"));
 		assertFalse(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "00"));
 		assertFalse(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "ab"));
-		
-		assertTrue(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "12/34567890123456789012345678901234567890"));
+		assertFalse(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "12345678901234567890123456789012345678901"));
+		assertFalse(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "1234567890123456789012345678901234567890/"));
+
+		assertTrue(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "1234567890123456789012345678901234567890"));
+		assertTrue(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "1234567890123456789012345678901234567890/foo"));
 	}
 	
-	@Test
-	public void testIsCommitSubDir() {
-		assertFalse(GitUtils.isCommitSubDir(""));
-		assertFalse(GitUtils.isCommitSubDir("/"));
-		assertFalse(GitUtils.isCommitSubDir("/something"));
-		assertFalse(GitUtils.isCommitSubDir("/branch"));
-		assertFalse(GitUtils.isCommitSubDir("/tag"));
-		assertFalse(GitUtils.isCommitSubDir("/commit"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "00/"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "0g"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "fg"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "zz"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "00"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "ab"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "12/34567890123456789012345678901234567890"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "12/34567890123456789012345678901234567890/"));
-		assertFalse(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "12/34567890123456789012345678901234567890/file123/.hidden"));
-		
-		assertTrue(GitUtils.isCommitSubDir(GitUtils.COMMIT_SLASH + "12/34567890123456789012345678901234567890/file123"));
-	}
-
 	@Test
 	public void testIsBranchDir() {
 		assertFalse(GitUtils.isBranchDir(""));

@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collection;
 import java.util.List;
 
 import net.fusejna.StatWrapperFactory;
@@ -18,7 +17,6 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.api.errors.NoHeadException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -101,14 +99,12 @@ public class JGitHelperTest {
 	@Test
 	public void test() throws Exception {
 		assertNotNull(helper);
-		assertTrue(helper.allCommits(null).size() > 0);
 	}
 
 	@Test
 	public void testWithGitdir() throws Exception {
 		JGitHelper lhelper = new JGitHelper("./.git");
 		assertNotNull(lhelper);
-		assertTrue(lhelper.allCommits(null).size() > 0);
 		lhelper.close();
 	}
 
@@ -126,15 +122,18 @@ public class JGitHelperTest {
 	@Test
 	public void testReadCommit() throws Exception {
 		assertEquals("abcd", helper.readCommit("abcd"));
-		assertEquals("abcd", helper.readCommit("/commit/ab/cd"));
-		assertEquals("1234567890123456789012345678901234567890", helper.readCommit("/commit/12/345678901234567890123456789012345678901234567890"));
+		assertEquals("abcd", helper.readCommit("/commit/abcd"));
+		assertEquals("1234567890123456789012345678901234567890",
+				helper.readCommit("/commit/12345678901234567890123456789012345678901234567890"));
+		assertEquals("1234567890123456789012345678901234567890",
+				helper.readCommit("/commit/1234567890123456789012345678901234567890/blabla"));
 	}
 
 	@Test
 	public void testReadPath() throws Exception {
 		assertEquals("", helper.readPath("abcd"));
-		assertEquals("", helper.readPath("/commit/ab/cd"));
-		assertEquals("blabla", helper.readPath("/commit/12/34567890123456789012345678901234567890/blabla"));
+		assertEquals("", helper.readPath("/commit/abcd"));
+		assertEquals("blabla", helper.readPath("/commit/1234567890123456789012345678901234567890/blabla"));
 	}
 
 	@Test
@@ -164,12 +163,7 @@ public class JGitHelperTest {
 	@Test
 	public void testReadTypeFails() throws Exception {
 		final StatWrapper wrapper = getStatsWrapper();
-		try {
-			helper.readType(DEFAULT_COMMIT, "notexisting", wrapper);
-			fail("Should catch exception here");
-		} catch (FileNotFoundException e) {
-			assertTrue(e.getMessage().contains("notexisting"));
-		}
+		assertFalse(helper.readType(DEFAULT_COMMIT, "notexisting", wrapper));
 	}
 
 	@Test
@@ -311,100 +305,6 @@ public class JGitHelperTest {
 		assertTrue(tags.size() > 0);
 		assertTrue("Had: " + tags.toString(), tags.contains("__testtag"));
 		assertTrue("Had: " + tags.toString(), tags.contains("__test/tag"));
-	}
-
-	@Test
-	public void testallCommitsNull() throws NoHeadException, GitAPIException, IOException {
-		Collection<String> allCommits = helper.allCommits(null);
-		int size = allCommits.size();
-		assertTrue("Had size: " + size, size > 3);
-		assertTrue(allCommits.contains(DEFAULT_COMMIT));
-	}
-
-	@Test
-	public void testallCommits() throws NoHeadException, GitAPIException, IOException {
-		int size = helper.allCommits("zz").size();
-		assertEquals("Had size: " + size, 0, size);
-
-		Collection<String> allCommits = helper.allCommits(null);
-		assertTrue(allCommits.size() > 0);
-		assertTrue(allCommits.contains(DEFAULT_COMMIT));
-
-		allCommits = helper.allCommits(allCommits.iterator().next().substring(0, 2));
-		assertTrue(allCommits.size() > 0);
-
-		allCommits = helper.allCommits("00");
-		assertFalse(allCommits.contains(DEFAULT_COMMIT));
-
-		allCommits = helper.allCommits(DEFAULT_COMMIT.substring(0,2));
-		assertTrue(allCommits.contains(DEFAULT_COMMIT));
-	}
-
-	@Test
-	public void testAllCommitSubs() throws NoHeadException, GitAPIException, IOException {
-		Collection<String> subs = helper.allCommitSubs();
-		int subSize = subs.size();
-		assertTrue("Had: " + subs, subSize > 3);
-
-		for(String tup : subs) {
-			assertEquals("Had: " + tup, 2, tup.length());
-			assertTrue("Had: " + tup, tup.matches("[a-f0-9]{2}"));
-		}
-
-		assertTrue(subs.contains(DEFAULT_COMMIT.substring(0,2)));
-	}
-
-	@Ignore("local test")
-	@Test
-	public void testAllCommitSubsJenkins() throws NoHeadException, GitAPIException, IOException {
-		helper.close();
-		helper = new JGitHelper("/opt/jenkins/jenkins.git/.git");
-		//helper = new JGitHelper("G:\\workspaces\\linux\\.git");
-		//helper = new JGitHelper("/opt/poi/.git");
-
-		System.out.println("warmup");
-		for(int i = 0;i < 3;i++) {
-			int size = helper.allCommitSubs().size();
-			assertTrue("Had size: " + size, size > 3);
-			System.out.print("." + size);
-		}
-
-		System.out.println("run");
-		long start = System.currentTimeMillis();
-		for(int i = 0;i < 10;i++) {
-			int size = helper.allCommitSubs().size();
-			assertTrue("Had size: " + size, size > 3);
-			System.out.print("." + size);
-		}
-		System.out.println("avg.time: " + (System.currentTimeMillis() - start)/10);
-	}
-
-	@Ignore("local test")
-	@Test
-	public void testAllCommitsJenkins() throws NoHeadException, GitAPIException, IOException {
-		helper.close();
-		helper = new JGitHelper("/opt/jenkins/jenkins.git/.git");
-		//helper = new JGitHelper("G:\\workspaces\\linux\\.git");
-		//helper = new JGitHelper("/opt/poi/.git");
-
-		long start;
-
-		System.out.println("warmup");
-		for(int i = 0;i < 3;i++) {
-			start = System.currentTimeMillis();
-			int size = helper.allCommits(null).size();
-			assertTrue("Had size: " + size, size > 3);
-			System.out.print("." + size + ": " + (System.currentTimeMillis() - start));
-		}
-
-		System.out.println("run");
-		start = System.currentTimeMillis();
-		for(int i = 0;i < 10;i++) {
-			int size = helper.allCommits(null).size();
-			assertTrue("Had size: " + size, size > 3);
-			System.out.print("." + size);
-		}
-		System.out.println("avg.time old: " + (System.currentTimeMillis() - start)/10);
 	}
 
 	@Ignore("local test")

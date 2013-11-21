@@ -5,7 +5,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -89,23 +88,10 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 	public int getattr(final String path, final StatWrapper stat)
 	{
 		// known entries and directories beneath /commit are always directories
-		if(DIRS.contains(path) || GitUtils.isCommitSub(path) || GitUtils.isCommitDir(path)) {
+		if(DIRS.contains(path)) {
 			//stat.uid(GitUtils.UID);
 			//stat.gid(GitUtils.GID);
 			stat.setMode(NodeType.DIRECTORY, true, false, true);
-			return 0;
-		} else if (GitUtils.isCommitSubDir(path)) {
-			// for actual entries for a commit we need to read the file-type information from Git
-			String commit = jgitHelper.readCommit(path);
-			String file = jgitHelper.readPath(path);
-
-			try {
-				jgitHelper.readType(commit, file, stat);
-			} catch (FileNotFoundException e) {
-				return -ErrorCodes.ENOENT();
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading type of path " + path + ", commit " + commit + " and file " + file, e);
-			}
 			return 0;
 		} else if (GitUtils.isBranchDir(path)) {
 			return getattrRef("refs/heads/" + StringUtils.removeStart(path, GitUtils.BRANCH_SLASH), stat);
@@ -113,6 +99,19 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			return getattrRef("refs/tags/" + StringUtils.removeStart(path, GitUtils.TAG_SLASH), stat);
 		} else if (GitUtils.isRemoteDir(path)) {
 			return getattrRef("refs/remotes/" + StringUtils.removeStart(path, GitUtils.REMOTE_SLASH), stat);
+		} else if (GitUtils.isCommitDir(path)) {
+			String commit = jgitHelper.readCommit(path);
+			String file = jgitHelper.readPath(path);
+
+			try {
+				if (jgitHelper.readType(commit, file, stat)) {
+					return 0;
+				} else {
+					return -ErrorCodes.ENOENT();
+				}
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading type of path " + path + ", commit " + commit + " and file " + file, e);
+			}
 		}
 
 		// all others are reported as "not found"
@@ -206,32 +205,10 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 
 			return 0;
 		} else if (path.equals("/commit")) {
-			// list two-char subs for all commits
-			try {
-				Collection<String> items = jgitHelper.allCommitSubs();
-				for(String item : items) {
-					filler.add(item);
-				}
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading elements of path " + path, e);
-			}
-
+			// Do not list commits.
+			// consider: LRU list of recently-accessed for completion?
 			return 0;
-		} else if (GitUtils.isCommitSub(path)) {
-			// get the sub that is requested here
-			String sub = StringUtils.removeStart(path, GitUtils.COMMIT_SLASH);
-			try {
-				// list all commits for the requested sub
-				Collection<String> items = jgitHelper.allCommits(sub);
-				for(String item : items) {
-					filler.add(item.substring(2));
-				}
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading elements of path " + path, e);
-			}
-
-			return 0;
-		} else if (GitUtils.isCommitDir(path) || GitUtils.isCommitSubDir(path)) {
+		} else if (GitUtils.isCommitDir(path)) {
 			// handle listing the root dir of a commit or a file beneath that
 			String commit = jgitHelper.readCommit(path);
 			String dir = jgitHelper.readPath(path);
@@ -373,46 +350,46 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
       .maximumSize(1000)
       .expireAfterWrite(1, TimeUnit.MINUTES)
       .build(new CacheLoader<String, byte[]>() {
-        @Override
-        public byte[] load(String path) {
-          try {
-            final String commit;
-            final String partialPath;
-            if (GitUtils.isBranchDir(path)) {
-              partialPath = StringUtils.removeStart(path, GitUtils.BRANCH_SLASH);
-              commit = jgitHelper.getBranchHeadCommit(partialPath);
-            } else if (GitUtils.isTagDir(path)) {
-              partialPath = StringUtils.removeStart(path, GitUtils.TAG_SLASH);
-              commit = jgitHelper.getTagHeadCommit(partialPath);
-            } else if (GitUtils.isRemoteDir(path)) {
-              partialPath = StringUtils.removeStart(path, GitUtils.REMOTE_SLASH);
-              commit = jgitHelper.getRemoteHeadCommit(partialPath);
-            } else {
-              String lcommit = jgitHelper.readCommit(path);
-              String dir = jgitHelper.readPath(path);
+				@Override
+				public byte[] load(String path) {
+					try {
+						final String commit;
+						final String partialPath;
+						if (GitUtils.isBranchDir(path)) {
+							partialPath = StringUtils.removeStart(path, GitUtils.BRANCH_SLASH);
+							commit = jgitHelper.getBranchHeadCommit(partialPath);
+						} else if (GitUtils.isTagDir(path)) {
+							partialPath = StringUtils.removeStart(path, GitUtils.TAG_SLASH);
+							commit = jgitHelper.getTagHeadCommit(partialPath);
+						} else if (GitUtils.isRemoteDir(path)) {
+							partialPath = StringUtils.removeStart(path, GitUtils.REMOTE_SLASH);
+							commit = jgitHelper.getRemoteHeadCommit(partialPath);
+						} else {
+							String lcommit = jgitHelper.readCommit(path);
+							String dir = jgitHelper.readCommitPath(path);
 
-              return jgitHelper.readSymlink(lcommit, dir);
-            }
+							return jgitHelper.readSymlink(lcommit, dir);
+						}
 
-            if (commit == null) {
-              throw new FileNotFoundException(
-                  "Had unknown tag/branch/remote " + path + " in readlink()");
-            }
-            StringBuilder target = new StringBuilder("..");
-            for (char c : partialPath.toCharArray()) {
-              if (c == '/') {
-                target.append("/..");
-              }
-            }
-            target.append(GitUtils.COMMIT_SLASH);
-            target.append(commit.substring(0, 2)).append("/").append(commit.substring(2));
+						if (commit == null) {
+							throw new FileNotFoundException(
+									"Had unknown tag/branch/remote " + path + " in readlink()");
+						}
+						StringBuilder target = new StringBuilder("..");
+						for (char c : partialPath.toCharArray()) {
+							if (c == '/') {
+								target.append("/..");
+							}
+						}
+						target.append(GitUtils.COMMIT_SLASH);
+						target.append(commit);
 
-            return target.toString().getBytes();
-          } catch (Exception e) {
-            throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
-          }
-        }
-      });
+						return target.toString().getBytes();
+					} catch (Exception e) {
+						throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
+					}
+				}
+			});
 
 	@Override
 	public int readlink(String path, ByteBuffer buffer, long size) {

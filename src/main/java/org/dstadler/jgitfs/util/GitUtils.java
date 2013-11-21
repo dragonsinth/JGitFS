@@ -15,13 +15,9 @@ import org.apache.commons.io.IOUtils;
  */
 public class GitUtils {
 	public final static String COMMIT_SLASH = "/commit/";
-	public final static int COMMIT_SLASH_LENGTH = COMMIT_SLASH.length();
-
 	public final static String BRANCH_SLASH = "/branch/";
 	public final static String REMOTE_SLASH = "/remote/";
 	public final static String TAG_SLASH = "/tag/";
-
-	private final static int SHA1_LENGTH = 40;
 
 	public final static long UID = getUID();
 	public final static long GID = getGID();
@@ -29,7 +25,7 @@ public class GitUtils {
 	private final static Pattern TAG_PATTERN = Pattern.compile("/tag/.+");
 	private final static Pattern BRANCH_PATTERN = Pattern.compile("/branch/.+");
 	private final static Pattern REMOTE_PATTERN = Pattern.compile("/remote/.+");
-	private final static Pattern COMMIT_SUB_PATTERN = Pattern.compile("/commit/[a-f0-9]{2}");
+	private final static Pattern COMMIT_PATTERN = Pattern.compile("/commit/[a-z0-9]{40}(/.+)?");
 
 	public static boolean isTagDir(final String path) {
 		return TAG_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
@@ -43,18 +39,8 @@ public class GitUtils {
 		return REMOTE_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
 	}
 	
-	public static boolean isCommitSub(final String path) {
-		return COMMIT_SUB_PATTERN.matcher(path).matches();
-	}
-
 	public static boolean isCommitDir(final String path) {
-		// 8 for /commit/, 40 + 1 for commitish plus one slash
-		return path.startsWith(COMMIT_SLASH) && path.length() == (COMMIT_SLASH_LENGTH + SHA1_LENGTH + 1);
-	}
-
-	public static boolean isCommitSubDir(final String path) {
-		// 8 for /commit/, 40 + 2 for commitish plus two slashes
-		return path.startsWith(COMMIT_SLASH) && path.length() > (COMMIT_SLASH_LENGTH + SHA1_LENGTH + 2) && !path.endsWith(".hidden");
+		return COMMIT_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
 	}
 
 	public static long getUID() {

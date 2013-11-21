@@ -6,13 +6,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import net.fusejna.StructStat.StatWrapper;
 import net.fusejna.types.TypeMode.NodeType;
@@ -21,6 +17,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectIdSubclassMap;
@@ -74,19 +71,19 @@ public class JGitHelper implements Closeable {
 	}
 
 	/**
-	 * For a path to a commit, i.e. something like "/commit/00/123456..." return the
-	 * actual commit-id, i.e. 00123456...
+	 * For a path to a commit, i.e. something like "/commit/0123456..." return the
+	 * actual commit-id, i.e. 0123456...
 	 *
-	 * @param path The path with the three elements "commit", <two-digit-sub>, <40-digit-rest>
+	 * @param path The full path including the commit-id
 	 * @return The resulting commit-id
 	 */
 	public String readCommit(String path) {
-		String commit = StringUtils.removeStart(path, GitUtils.COMMIT_SLASH).replace("/", "");
+		String commit = StringUtils.removeStart(path, GitUtils.COMMIT_SLASH);
 		return StringUtils.substring(commit, 0, 40);
 	}
 
 	/**
-	 * For a path to a file/directory inside a commit like "/commit/00/123456.../somedir/somefile", return
+	 * For a path to a file/directory inside a commit like "/commit/0123456.../somedir/somefile", return
 	 * the actual file-path, i.e. "somedir/somefile"
 	 *
 	 * @param path The full path including the commit-id
@@ -94,7 +91,7 @@ public class JGitHelper implements Closeable {
 	 */
 	public String readPath(final String path) {
 		String file = StringUtils.removeStart(path, GitUtils.COMMIT_SLASH);
-		return StringUtils.substring(file, 40 + 2);	// cut away commitish and two slashes
+		return StringUtils.substring(file, 40 + 1);	// cut away commitish and slash
 	}
 
 	/**
@@ -106,10 +103,23 @@ public class JGitHelper implements Closeable {
 	 *
 	 * @throws IllegalStateException If the path or the commit cannot be found or an unknown type is encountered
 	 * @throws IOException If access to the Git repository fails
-	 * @throws FileNotFoundException If the given path cannot be found as part of the given commit-id
+	 * @return true if the object could be found
 	 */
-	public void readType(String commit, String path, StatWrapper stat) throws IOException {
-		RevCommit revCommit = buildRevCommit(commit);
+	public boolean readType(String commit, String path, StatWrapper stat) throws IOException {
+		RevCommit revCommit;
+		try {
+			revCommit = buildRevCommit(commit);
+		} catch (MissingObjectException e) {
+			return false;
+		} catch (IncorrectObjectTypeException e) {
+			return false;
+		}
+
+		if (path.length() == 0) {
+			// The top-level commit directory itself.
+			stat.setMode(NodeType.DIRECTORY, true, false, true);
+			return true;
+		}
 
 		// and using commit's tree find the path
 		RevTree tree = revCommit.getTree();
@@ -122,20 +132,25 @@ public class JGitHelper implements Closeable {
 		//stat.gid(GitUtils.GID);
 
 		// now read the file/directory attributes
-		TreeWalk treeWalk = buildTreeWalk(tree, path);
+		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
+		if (treeWalk == null) {
+			return false;
+		}
 		FileMode fileMode = treeWalk.getFileMode(0);
 		if(fileMode.equals(FileMode.EXECUTABLE_FILE) ||
 				fileMode.equals(FileMode.REGULAR_FILE)) {
-			ObjectLoader loader = repository.open(treeWalk.getObjectId(0));
-			stat.size(loader.getSize());
+			stat.size(
+					treeWalk.getObjectReader().getObjectSize(treeWalk.getObjectId(0), Constants.OBJ_BLOB));
 			stat.setMode(NodeType.FILE, true, false, fileMode.equals(FileMode.EXECUTABLE_FILE));
-			return;
+			return true;
 		} else if(fileMode.equals(FileMode.TREE)) {
+			stat.size(
+					treeWalk.getObjectReader().getObjectSize(treeWalk.getObjectId(0), Constants.OBJ_TREE));
 			stat.setMode(NodeType.DIRECTORY, true, false, true);
-			return;
+			return true;
 		} if(fileMode.equals(FileMode.SYMLINK)) {
 			stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
-			return;
+			return true;
 		}
 
 		throw new IllegalStateException("Found unknown FileMode in Git for commit '" + commit + "' and path '" + path + "': " + fileMode.getBits());
@@ -214,7 +229,7 @@ public class JGitHelper implements Closeable {
 		return treeWalk;
 	}
 
-	private RevCommit buildRevCommit(String commit) throws MissingObjectException, IncorrectObjectTypeException, IOException {
+	private RevCommit buildRevCommit(String commit) throws IOException {
 		// a RevWalk allows to walk over commits based on some filtering that is defined
 		RevWalk revWalk = new RevWalk(repository);
 		return revWalk.parseCommit(ObjectId.fromString(commit));
@@ -324,131 +339,6 @@ public class JGitHelper implements Closeable {
 		// NOT faster: git.getRepository().getRefDatabase().isNameConflicting(prefix);
 		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs(prefix + '/');
 		return refMap.size() > 0;
-	}
-
-	/**
-	 * Retrieve a list of all two-digit commit-subs which allow to build the first directory level
-	 * of a commit-file-structure.
-	 *
-	 * @return A Set containing all used commit-subs where the filesystem can drill down to actual commits.
-	 * @throws IOException If access to the Git repository fails.
-	 */
-	public Set<String> allCommitSubs() throws IOException {
-		Set<String> commitSubs = new HashSet<String>();
-
-		// we currently use all refs for finding commits quickly
-		RevWalk walk = new RevWalk(repository);
-		try {
-			// optimization: we only need the commit-ids here, so we can discard the contents right away
-			walk.setRetainBody(false);
-	
-			Map<String, Ref> allRefs = repository.getAllRefs();
-			for(String ref : allRefs.keySet()) {
-				addCommitSubs(commitSubs, walk, ref);
-			}
-	
-			return commitSubs;
-		} finally {
-			walk.dispose();
-		}
-	}
-
-	private void addCommitSubs(Collection<String> commits, RevWalk walk, String ref) throws IOException {
-		Ref head = repository.getRef(ref);
-		final RevCommit commit;
-		try {
-			commit = walk.parseCommit(head.getObjectId());
-		} catch (IncorrectObjectTypeException e) {
-			System.out.println("Invalid head-commit for ref " + ref + " and id: " + head.getObjectId().getName() + ": " + e);
-			return;
-		}
-		walk.markStart(commit);
-		try {
-			for(RevCommit rev : walk) {
-				String name = rev.getName();
-				commits.add(name.substring(0,2));
-
-				// we can leave the loop as soon as we have all two-digit values, which is typically the case for large repositories
-				if(commits.size() >= 256) {
-					return;
-				}
-			}
-		} finally {
-			walk.reset();
-		}
-	}
-
-	/**
-	 * Retrieve a list of all or a certain range of commit-ids in this Git repository. This is used to
-	 * populate the second level beneath the /commit directory with the actual commit-ids. The parameter
-	 * "sub" allows to only return commits starting with a certain commit-sub.
-	 *
-	 * @param sub A two-digit which is used to filter commit-ids, or null if no filtering should be done.
-	 * @return A Set containing all commit-ids found in this Git repository if sub is null or only matching commit-ids if sub is specified.
-	 * @throws IOException If access to the Git repository fails.
-	 */
-	public Collection<String> allCommits(String sub) throws IOException {
-		ObjectIdSubclassMap<RevCommit> map = new ObjectIdSubclassMap<RevCommit>();
-
-		// TODO: we do not read unreferenced commits here, it would be nice to be able to access these as well here
-		// see http://stackoverflow.com/questions/17178432/how-to-find-all-commits-using-jgit-not-just-referenceable-ones
-		// as a workaround we currently use all branches (includes master) and all tags for finding commits quickly
-		Map<String, Ref> allRefs = repository.getAllRefs();
-
-		RevWalk walk = new RevWalk(repository);
-		
-		// optimization: we only need the commit-ids here, so we can discard the contents right away
-		walk.setRetainBody(false);
-		
-		try {
-			// Store commits directly, not the SHA1 as getName() is a somewhat costly operation on RevCommit via formatHexChar()
-			Set<RevCommit> seenHeadCommits = new HashSet<RevCommit>(allRefs.size());
-			for(String ref : allRefs.keySet()) {
-				Ref head = repository.getRef(ref);
-				final RevCommit commit;
-				try {
-					commit = walk.parseCommit(head.getObjectId());
-				} catch (IncorrectObjectTypeException e) {
-					System.out.println("Invalid head-commit for ref " + ref + " and id: " + head.getObjectId().getName() + ": " + e);
-					continue;
-				}
-	
-				// only read commits of this ref if we did not add parents of this commit already
-				if(seenHeadCommits.add(commit)) {
-					addCommits(map, walk, commit, sub);
-				}
-			}
-			//System.out.println("Had " + seen + " dupplicate commits");
-		} finally {
-			walk.dispose();
-		}
-
-		// use the ObjectIdSubclassMap for quick map-insertion and only afterwards convert the resulting commits
-		// to Strings. ObjectIds can be compared much quicker as Strings as they only are 4 ints, not 40 character strings
-		List<String> commits = new ArrayList<String>(map.size());
-
-		Iterator<RevCommit> iterator = map.iterator();
-		while(iterator.hasNext()) {
-			RevObject commit = iterator.next();
-			commits.add(commit.getName());
-		}
-
-		return commits;
-	}
-
-	private void addCommits(ObjectIdSubclassMap<RevCommit> map, RevWalk walk, RevCommit commit, String sub) throws IOException, MissingObjectException,
-			IncorrectObjectTypeException {
-		walk.markStart(commit);
-		try {
-			for(RevCommit rev : walk) {
-				String name = rev.getName();
-				if(sub == null || name.startsWith(sub)) {
-					map.addIfAbsent(rev);
-				}
-			}
-		} finally {
-			walk.reset();
-		}
 	}
 
 	/**

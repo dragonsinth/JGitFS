@@ -29,9 +29,7 @@ import org.junit.Test;
 
 
 public class JGitFilesystemTest {
-	private static final String DEFAULT_COMMIT_SUB = JGitHelperTest.DEFAULT_COMMIT.substring(0,2);
-	private static final String DEFAULT_COMMIT_PREFIX = JGitHelperTest.DEFAULT_COMMIT.substring(2);
-	private static final String DEFAULT_COMMIT_PATH = "/commit/" + DEFAULT_COMMIT_SUB + "/" + DEFAULT_COMMIT_PREFIX;
+	private static final String DEFAULT_COMMIT_PATH = "/commit/" + JGitHelperTest.DEFAULT_COMMIT;
 
 	private JGitFilesystem fs;
 
@@ -83,8 +81,6 @@ public class JGitFilesystemTest {
 		assertEquals(0, fs.getattr("/branch", stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/remote", stat));
-		assertEquals(NodeType.DIRECTORY, stat.type());
-		assertEquals(0, fs.getattr("/commit/0a", stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr(DEFAULT_COMMIT_PATH, stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
@@ -188,11 +184,7 @@ public class JGitFilesystemTest {
 
 		filledFiles.clear();
 		fs.readdir("/commit", filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains(DEFAULT_COMMIT_SUB));
-
-		filledFiles.clear();
-		fs.readdir("/commit/" + DEFAULT_COMMIT_SUB, filler);
-		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains(DEFAULT_COMMIT_PREFIX));
+		assertTrue(filledFiles.isEmpty());
 
 		filledFiles.clear();
 		fs.readdir(DEFAULT_COMMIT_PATH, filler);
@@ -527,8 +519,8 @@ public class JGitFilesystemTest {
 		ByteBuffer buffer = ByteBuffer.allocate(1000);
 		assertEquals(0, fs.readlink("/branch/master", buffer, 1000));
 		assertEquals("A commit-ish link should be written to the buffer, but had: " + new String(buffer.array(), 0, buffer.position()), 
-				1000-51, buffer.remaining());
-		// e.g. ../commit/43/27273e69afcd040ba1b4d3766ea1f43e0024f3
+				1000-50, buffer.remaining());
+		// e.g. ../commit/4327273e69afcd040ba1b4d3766ea1f43e0024f3
 		String commit = new String(buffer.array(), 0, buffer.position()).substring(2);
 		
 		// check that the test-data is there
@@ -594,8 +586,8 @@ public class JGitFilesystemTest {
 		ByteBuffer buffer = ByteBuffer.allocate(1000);
 		assertEquals(0, fs.readlink("/remote/origin/master", buffer, 1000));
 		assertEquals("A commit-ish link should be written to the buffer, but had: " + new String(buffer.array(), 0, buffer.position()), 
-				1000-54, buffer.remaining());
-		// e.g. ../commit/43/27273e69afcd040ba1b4d3766ea1f43e0024f3
+				1000-53, buffer.remaining());
+		// e.g. ../../commit/4327273e69afcd040ba1b4d3766ea1f43e0024f3
 		String commit = new String(buffer.array(), 0, buffer.position()).substring(5);
 		
 		// check that the test-data is there
