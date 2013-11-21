@@ -3,7 +3,6 @@ package org.dstadler.jgitfs.util;
 import static org.junit.Assert.*;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -201,10 +200,23 @@ public class JGitHelperTest {
 	}
 
 	@Test
+	public void testReadTypeSpecial() throws Exception {
+		RevTree tree = helper.getTree(DEFAULT_TREE);
+		final StatWrapper wrapper = getStatsWrapper();
+
+		helper.readType(tree, ".gittree", wrapper);
+		assertEquals(NodeType.FILE, wrapper.type());
+
+		helper.readType(tree, "src/main/java/org/.gittree", wrapper);
+		assertEquals(NodeType.FILE, wrapper.type());
+	}
+
+	@Test
 	public void testReadTypeFails() throws Exception {
 		RevTree tree = helper.getTree(DEFAULT_TREE);
 		final StatWrapper wrapper = getStatsWrapper();
 		assertFalse(helper.readType(tree, "notexisting", wrapper));
+		assertFalse(helper.readType(tree, "notexisting/.gittree", wrapper));
 	}
 
 	@Test
@@ -245,28 +257,20 @@ public class JGitHelperTest {
 	}
 
 	@Test
+	public void testOpenFileSpecial() throws Exception {
+		RevTree tree = helper.getTree(DEFAULT_TREE);
+		String content = IOUtils.toString(helper.openFile(tree, ".gittree"));
+		assertEquals(DEFAULT_TREE + "\n", content);
+		content = IOUtils.toString(helper.openFile(tree, "src/main/java/.gittree"));
+		assertEquals("ea3020056050bb26a2275d965306c39be8f96b50\n", content);
+	}
+
+	@Test
 	public void testOpenFileFails() throws Exception {
 		RevTree tree = helper.getTree(DEFAULT_TREE);
-		try {
-			IOUtils.toString(helper.openFile(tree, "src"));
-			fail("Should catch exception here");
-		} catch (IllegalStateException e) {
-			assertTrue(e.getMessage().contains("src"));
-		}
-
-		try {
-			IOUtils.toString(helper.openFile(tree, "src/org"));
-			fail("Should catch exception here");
-		} catch (FileNotFoundException e) {
-			assertTrue(e.getMessage().contains("src/org"));
-		}
-
-		try {
-			IOUtils.toString(helper.openFile(tree, "notexisting"));
-			fail("Should catch exception here");
-		} catch (FileNotFoundException e) {
-			assertTrue(e.getMessage().contains("notexisting"));
-		}
+		assertNull(helper.openFile(tree, "src"));
+		assertNull(helper.openFile(tree, "src/org"));
+		assertNull(helper.openFile(tree, "notexisting"));
 	}
 
 	@Test

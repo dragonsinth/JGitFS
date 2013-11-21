@@ -1,8 +1,8 @@
 package org.dstadler.jgitfs.util;
 
+import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -30,6 +30,7 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
+import com.google.common.base.Charsets;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.InputSupplier;
 
@@ -164,6 +165,21 @@ public class JGitHelper implements Closeable {
 		// now read the file/directory attributes
 		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
 		if (treeWalk == null) {
+			if (path.equals(".gittree")) {
+				// Special hidden file.
+				stat.size(41);
+				stat.setMode(NodeType.FILE, true, false, true);
+				return true;
+			}
+			if (path.endsWith("/.gittree")) {
+				// Special hidden file only if within a valid tree.
+				treeWalk = TreeWalk.forPath(repository, StringUtils.removeEnd(path, "/.gittree"), tree);
+				if (treeWalk != null && treeWalk.isSubtree()) {
+					stat.size(41);
+					stat.setMode(NodeType.FILE, true, false, true);
+					return true;
+				}
+			}
 			return false;
 		}
 		FileMode fileMode = treeWalk.getFileMode(0);
@@ -218,23 +234,39 @@ public class JGitHelper implements Closeable {
 			}
 		});
 	}
-	
+
 	/**
 	 * Retrieve the contents of the given file as-of the given commit.
 	 *
 	 * @param tree The tree from which we read the data
 	 * @param path The path to the file/directory
 	 *
-	 * @return An InputStream which can be used to read the contents of the file.
+	 * @return An InputStream which can be used to read the contents of the file or null if the file could not be opened.
 	 *
 	 * @throws IllegalStateException If the path or the commit cannot be found or does not denote a file
 	 * @throws IOException If access to the Git repository fails
-	 * @throws FileNotFoundException If the given path cannot be found in the given tree
 	 */
 	public InputStream openFile(RevTree tree, String path) throws IOException {
-		TreeWalk treeWalk = buildTreeWalk(tree, path);
+		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
+		if (treeWalk == null) {
+			if (path.equals(".gittree")) {
+				// Special hidden symlink.
+				return new ByteArrayInputStream(
+						(tree.getId().getName() + '\n').getBytes(Charsets.US_ASCII));
+			}
+			if (path.endsWith("/.gittree")) {
+				// Special hidden symlink only if within a valid tree.
+				treeWalk = TreeWalk.forPath(repository, StringUtils.removeEnd(path, "/.gittree"), tree);
+				if (treeWalk != null && treeWalk.isSubtree()) {
+					return new ByteArrayInputStream(
+							(treeWalk.getObjectId(0).getName() + '\n').getBytes(Charsets.US_ASCII));
+				}
+			}
+			return null;
+		}
+
 		if((treeWalk.getFileMode(0).getBits() & FileMode.TYPE_FILE) == 0) {
-			throw new IllegalStateException("Tried to read the contents of a non-file for tree '" + tree + "' and path '" + path + "', had filemode " + treeWalk.getFileMode(0).getBits());
+			return null;
 		}
 
 		// then open the file for reading.
@@ -243,22 +275,6 @@ public class JGitHelper implements Closeable {
 
 		// finally open an InputStream for the file contents
 		return loader.openStream();
-	}
-
-	private TreeWalk buildTreeWalk(RevTree tree, final String path) throws IOException {
-		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
-
-		if(treeWalk == null) {
-			throw new FileNotFoundException("Did not find expected file '" + path + "' in tree '" + tree.getName() + "'");
-		}
-
-		return treeWalk;
-	}
-
-	private RevCommit buildRevCommit(String commit) throws IOException {
-		// a RevWalk allows to walk over commits based on some filtering that is defined
-		RevWalk revWalk = new RevWalk(repository);
-		return revWalk.parseCommit(ObjectId.fromString(commit));
 	}
 
 	/**

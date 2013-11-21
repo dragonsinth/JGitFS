@@ -1,7 +1,6 @@
 package org.dstadler.jgitfs;
 
 import java.io.Closeable;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -169,6 +168,9 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			}
 
 			InputStream openFile = jgitHelper.openFile(revTree, file);
+			if (openFile == null) {
+				return -ErrorCodes.ENOENT();
+			}
 			try {
 				// skip until we are at the offset
 				ByteStreams.skipFully(openFile, offset);
@@ -191,8 +193,6 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			} finally {
 				openFile.close();
 			}
-		} catch (FileNotFoundException e) {
-			return -ErrorCodes.ENOENT();
 		} catch (Exception e) {
 			throw new IllegalStateException("Error reading contents of path " + path, e);
 		}
