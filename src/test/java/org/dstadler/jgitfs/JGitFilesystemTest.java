@@ -30,6 +30,7 @@ import org.junit.Test;
 
 public class JGitFilesystemTest {
 	private static final String DEFAULT_COMMIT_PATH = "/commit/" + JGitHelperTest.DEFAULT_COMMIT;
+	private static final String DEFAULT_TREE_PATH = "/tree/" + JGitHelperTest.DEFAULT_TREE;
 
 	private JGitFilesystem fs;
 
@@ -76,6 +77,8 @@ public class JGitFilesystemTest {
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/commit", stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr("/tree", stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/tag", stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr("/branch", stat));
@@ -85,6 +88,10 @@ public class JGitFilesystemTest {
 		assertEquals(0, fs.getattr(DEFAULT_COMMIT_PATH, stat));
 		assertEquals(NodeType.DIRECTORY, stat.type());
 		assertEquals(0, fs.getattr(DEFAULT_COMMIT_PATH + "/README.md", stat));
+		assertEquals(NodeType.FILE, stat.type());
+		assertEquals(0, fs.getattr(DEFAULT_TREE_PATH, stat));
+		assertEquals(NodeType.DIRECTORY, stat.type());
+		assertEquals(0, fs.getattr(DEFAULT_TREE_PATH + "/README.md", stat));
 		assertEquals(NodeType.FILE, stat.type());
 		assertEquals(0, fs.getattr("/branch/__testbranch", stat));
 		assertEquals(NodeType.SYMBOLIC_LINK, stat.type());
@@ -123,24 +130,25 @@ public class JGitFilesystemTest {
 
 	@Test
 	public void testRead() {
-		assertEquals(100, fs.read(DEFAULT_COMMIT_PATH + "/README.md", ByteBuffer.allocate(100), 100, 0, null));
+		ByteBuffer buffer = ByteBuffer.allocate(100);
+		assertEquals(100, fs.read(DEFAULT_COMMIT_PATH + "/README.md", buffer, 100, 0, null));
+		buffer.rewind();
+		assertEquals(100, fs.read(DEFAULT_TREE_PATH + "/README.md", buffer, 100, 0, null));
 	}
 
 	@Test
 	public void testReadTooMuch() {
-		int read = fs.read(DEFAULT_COMMIT_PATH + "/README.md", ByteBuffer.allocate(100000), 100000, 0, null);
+		ByteBuffer buffer = ByteBuffer.allocate(100000);
+		int read = fs.read(DEFAULT_COMMIT_PATH + "/README.md", buffer, 100000, 0, null);
+		assertEquals(4816, read);
+		buffer.rewind();
+		read = fs.read(DEFAULT_TREE_PATH + "/README.md", buffer, 100000, 0, null);
 		assertEquals(4816, read);
 	}
 
 	@Test
 	public void testReadFails() {
-		try {
-			fs.read("/somepath", null, 0, 0, null);
-			fail("Should throw exception as this should not occur");
-		} catch (IllegalStateException e) {
-			assertTrue(e.toString(), e.toString().contains("Error reading contents"));
-			assertTrue(e.toString(), e.toString().contains("/somepath"));
-		}
+		assertEquals(-ErrorCodes.ENOENT(), fs.read("/somepath", null, 0, 0, null));
 	}
 
 	@Test
@@ -149,7 +157,7 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		fs.readdir("/", filler);
-		assertEquals("[/branch, /commit, /remote, /tag]", filledFiles.toString());
+		assertEquals("[/branch, /commit, /remote, /tag, /tree]", filledFiles.toString());
 
 		filledFiles.clear();
 		fs.readdir("/tag", filler);
@@ -193,22 +201,22 @@ public class JGitFilesystemTest {
 		filledFiles.clear();
 		fs.readdir(DEFAULT_COMMIT_PATH + "/src", filler);
 		assertEquals("Had: " + filledFiles.toString(), "[main, test]", filledFiles.toString());
+
+		filledFiles.clear();
+		fs.readdir(DEFAULT_TREE_PATH, filler);
+		assertTrue("Had: " + filledFiles.toString(), filledFiles.contains("README.md"));
+
+		filledFiles.clear();
+		fs.readdir(DEFAULT_TREE_PATH + "/src", filler);
+		assertEquals("Had: " + filledFiles.toString(), "[main, test]", filledFiles.toString());
 	}
 
 	@Test
 	public void testReadDirPathFails() {
 		final List<String> filledFiles = new ArrayList<String>();
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
-
-		String path = DEFAULT_COMMIT_PATH + "/notexisting";
-		try {
-			filledFiles.clear();
-			fs.readdir(path, filler);
-			fail("Should throw exception as this should not occur");
-		} catch (IllegalStateException e) {
-			assertTrue(e.toString(), e.toString().contains("Error reading elements of path"));
-			assertTrue(e.toString(), e.toString().contains(path));
-		}
+		assertEquals(-ErrorCodes.ENOENT(), fs.readdir(DEFAULT_COMMIT_PATH + "/notexisting", filler));
+		assertEquals(-ErrorCodes.ENOENT(), fs.readdir(DEFAULT_TREE_PATH + "/notexisting", filler));
 	}
 
 	@Test
@@ -363,22 +371,8 @@ public class JGitFilesystemTest {
 
 	@Test
 	public void testReadLinkUnknown() {
-		ByteBuffer buffer = ByteBuffer.allocate(100);
-		int readlink = fs.readlink("/branch/notexisting", null, 0);
-		assertEquals("Had: " + readlink + ": " + new String(buffer.array()), -ErrorCodes.ENOENT(), readlink);
-
-		assertEquals(0, buffer.position());
-	}
-
-	@Test
-	public void testReadLinkFails() {
-		try {
-			fs.readlink("/somepath", null, 0);
-			fail("Should throw exception as this should not occur");
-		} catch (IllegalStateException e) {
-			assertTrue(e.toString(), e.toString().contains("Error reading commit"));
-			assertTrue(e.toString(), e.toString().contains("/somepath"));
-		}
+		assertEquals(-ErrorCodes.ENOENT(), fs.readlink("/branch/notexisting", null, 0));
+		assertEquals(-ErrorCodes.ENOENT(), fs.readlink("/somepath", null, 0));
 	}
 
 	private File mount() throws IOException, UnsatisfiedLinkError, FuseException {
@@ -472,7 +466,7 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		assertEquals(0, fs.readdir("/", filler));
-		assertEquals("[/branch, /commit, /remote, /tag]", filledFiles.toString());
+		assertEquals("[/branch, /commit, /remote, /tag, /tree]", filledFiles.toString());
 
 		for(String file : new ArrayList<String>(filledFiles)) {
 			assertEquals(0, fs.getattr(file, stat));
@@ -481,16 +475,11 @@ public class JGitFilesystemTest {
 
 		filledFiles.clear();
 		assertEquals(0, fs.readdir("/commit", filler));
-		for(String file : new ArrayList<String>(filledFiles)) {
-			assertEquals(0, fs.getattr("/commit/" + file, stat));
-			filledFiles.clear();
-			assertEquals(0, fs.readdir("/commit/" + file, filler));
-			for(String subfile : new ArrayList<String>(filledFiles)) {
-				assertEquals(0, fs.getattr("/commit/" + file + "/" + subfile, stat));
-				filledFiles.clear();
-				assertEquals(0, fs.readdir("/commit/" + file + "/" + subfile, filler));
-			}
-		}
+		assertTrue(filledFiles.isEmpty());
+
+		filledFiles.clear();
+		assertEquals(0, fs.readdir("/tree", filler));
+		assertTrue(filledFiles.isEmpty());
 
 		filledFiles.clear();
 		assertEquals(0, fs.readdir("/branch", filler));

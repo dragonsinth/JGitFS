@@ -31,7 +31,28 @@ public class GitUtilsTest {
 		assertTrue(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "1234567890123456789012345678901234567890"));
 		assertTrue(GitUtils.isCommitDir(GitUtils.COMMIT_SLASH + "1234567890123456789012345678901234567890/foo"));
 	}
-	
+
+	@Test
+	public void testIsTreeDir() {
+		assertFalse(GitUtils.isTreeDir(""));
+		assertFalse(GitUtils.isTreeDir("/"));
+		assertFalse(GitUtils.isTreeDir("/something"));
+		assertFalse(GitUtils.isTreeDir("/branch"));
+		assertFalse(GitUtils.isTreeDir("/tag"));
+		assertFalse(GitUtils.isTreeDir("/tree"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "00/"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "0g"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "fg"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "zz"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "00"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "ab"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "12345678901234567890123456789012345678901"));
+		assertFalse(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "1234567890123456789012345678901234567890/"));
+
+		assertTrue(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "1234567890123456789012345678901234567890"));
+		assertTrue(GitUtils.isTreeDir(GitUtils.TREE_SLASH + "1234567890123456789012345678901234567890/foo"));
+	}
+
 	@Test
 	public void testIsBranchDir() {
 		assertFalse(GitUtils.isBranchDir(""));

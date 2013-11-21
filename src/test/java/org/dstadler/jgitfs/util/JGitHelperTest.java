@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 
 import net.fusejna.StatWrapperFactory;
@@ -21,6 +22,7 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.junit.After;
@@ -35,6 +37,7 @@ import com.google.common.base.Charsets;
 
 public class JGitHelperTest {
 	public final static String DEFAULT_COMMIT = "ede9797616a805d6cbeca376bfbbac9a8b7eb64f";
+	public final static String DEFAULT_TREE = "9c89e9eb385dbbfb0401aefde143a4de3bb9a361";
 
 	private static Git git;
 
@@ -130,30 +133,67 @@ public class JGitHelperTest {
 	}
 
 	@Test
-	public void testReadPath() throws Exception {
-		assertEquals("", helper.readPath("abcd"));
-		assertEquals("", helper.readPath("/commit/abcd"));
-		assertEquals("blabla", helper.readPath("/commit/1234567890123456789012345678901234567890/blabla"));
+	public void testReadCommitPath() throws Exception {
+		assertEquals("", helper.readCommitPath("abcd"));
+		assertEquals("", helper.readCommitPath("/commit/abcd"));
+		assertEquals("blabla", helper.readCommitPath(
+				"/commit/1234567890123456789012345678901234567890/blabla"));
+	}
+
+	@Test
+	public void testReadTree() throws Exception {
+		assertEquals("abcd", helper.readTree("abcd"));
+		assertEquals("abcd", helper.readTree("/tree/abcd"));
+		assertEquals("1234567890123456789012345678901234567890",
+				helper.readTree("/tree/12345678901234567890123456789012345678901234567890"));
+		assertEquals("1234567890123456789012345678901234567890",
+				helper.readTree("/tree/1234567890123456789012345678901234567890/blabla"));
+	}
+
+	@Test
+	public void testReadTreePath() throws Exception {
+		assertEquals("", helper.readTreePath("abcd"));
+		assertEquals("", helper.readTreePath("/tree/abcd"));
+		assertEquals("blabla",
+				helper.readTreePath("/tree/1234567890123456789012345678901234567890/blabla"));
+	}
+
+	@Test
+	public void testGetCommit() throws Exception {
+		assertNull(helper.getCommit("1234567890123456789012345678901234567890"));
+		assertNull(helper.getCommit(DEFAULT_TREE));
+
+		assertNotNull(helper.getCommit(DEFAULT_COMMIT));
+	}
+
+	@Test
+	public void testGetTree() throws Exception {
+		assertNull(helper.getTree("1234567890123456789012345678901234567890"));
+		assertNull(helper.getTree(DEFAULT_COMMIT));
+
+		assertNotNull(helper.getTree(DEFAULT_TREE));
+
+		assertEquals(helper.getTree(DEFAULT_TREE), helper.getCommit(DEFAULT_COMMIT).getTree());
 	}
 
 	@Test
 	public void testReadType() throws Exception {
+		RevTree tree = helper.getTree(DEFAULT_TREE);
 		final StatWrapper wrapper = getStatsWrapper();
 
-		System.out.println("Had commit: " + DEFAULT_COMMIT);
-		helper.readType(DEFAULT_COMMIT, "src", wrapper);
+		helper.readType(tree, "src", wrapper);
 		assertEquals(NodeType.DIRECTORY, wrapper.type());
 
-		helper.readType(DEFAULT_COMMIT, "src/main/java/org", wrapper);
+		helper.readType(tree, "src/main/java/org", wrapper);
 		assertEquals(NodeType.DIRECTORY, wrapper.type());
 
-		helper.readType(DEFAULT_COMMIT, "README.md", wrapper);
+		helper.readType(tree, "README.md", wrapper);
 		assertEquals(NodeType.FILE, wrapper.type());
 		assertTrue((wrapper.mode() & TypeMode.S_IXUSR) == 0);
 		assertTrue((wrapper.mode() & TypeMode.S_IXGRP) == 0);
 		assertTrue((wrapper.mode() & TypeMode.S_IXOTH) == 0);
 
-		helper.readType(DEFAULT_COMMIT, "src/main/java/org/dstadler/jgitfs/JGitFS.java", wrapper);
+		helper.readType(tree, "src/main/java/org/dstadler/jgitfs/JGitFS.java", wrapper);
 		assertEquals(NodeType.FILE, wrapper.type());
 		assertTrue((wrapper.mode() & TypeMode.S_IXUSR) == 0);
 		assertTrue((wrapper.mode() & TypeMode.S_IXGRP) == 0);
@@ -162,15 +202,17 @@ public class JGitHelperTest {
 
 	@Test
 	public void testReadTypeFails() throws Exception {
+		RevTree tree = helper.getTree(DEFAULT_TREE);
 		final StatWrapper wrapper = getStatsWrapper();
-		assertFalse(helper.readType(DEFAULT_COMMIT, "notexisting", wrapper));
+		assertFalse(helper.readType(tree, "notexisting", wrapper));
 	}
 
 	@Test
 	public void testReadTypeExecutable() throws Exception {
 		final StatWrapper wrapper = getStatsWrapper();
 		// Look at a specific older commit to have an executable file
-		helper.readType("355ea52f1e38b1c8e6537c093332180918808b68", "run.sh", wrapper);
+		RevTree tree = helper.getCommit("355ea52f1e38b1c8e6537c093332180918808b68").getTree();
+		helper.readType(tree, "run.sh", wrapper);
 		assertEquals(NodeType.FILE, wrapper.type());
 		assertTrue((wrapper.mode() & TypeMode.S_IXUSR) != 0);
 		assertTrue((wrapper.mode() & TypeMode.S_IXGRP) != 0);
@@ -197,29 +239,30 @@ public class JGitHelperTest {
 
 	@Test
 	public void testOpenFile() throws Exception {
-		System.out.println("Had commit: " + DEFAULT_COMMIT);
-		String runSh = IOUtils.toString(helper.openFile(DEFAULT_COMMIT, "README.md"));
+		RevTree tree = helper.getTree(DEFAULT_TREE);
+		String runSh = IOUtils.toString(helper.openFile(tree, "README.md"));
 		assertTrue("Had: " + runSh, StringUtils.isNotEmpty(runSh));
 	}
 
 	@Test
 	public void testOpenFileFails() throws Exception {
+		RevTree tree = helper.getTree(DEFAULT_TREE);
 		try {
-			IOUtils.toString(helper.openFile(DEFAULT_COMMIT, "src"));
+			IOUtils.toString(helper.openFile(tree, "src"));
 			fail("Should catch exception here");
 		} catch (IllegalStateException e) {
 			assertTrue(e.getMessage().contains("src"));
 		}
 
 		try {
-			IOUtils.toString(helper.openFile(DEFAULT_COMMIT, "src/org"));
+			IOUtils.toString(helper.openFile(tree, "src/org"));
 			fail("Should catch exception here");
 		} catch (FileNotFoundException e) {
 			assertTrue(e.getMessage().contains("src/org"));
 		}
 
 		try {
-			IOUtils.toString(helper.openFile(DEFAULT_COMMIT, "notexisting"));
+			IOUtils.toString(helper.openFile(tree, "notexisting"));
 			fail("Should catch exception here");
 		} catch (FileNotFoundException e) {
 			assertTrue(e.getMessage().contains("notexisting"));
@@ -228,11 +271,11 @@ public class JGitHelperTest {
 
 	@Test
 	public void testReadElementsAt() throws Exception {
-		System.out.println("Had commit: " + DEFAULT_COMMIT);
-		assertEquals("[main, test]", helper.readElementsAt(DEFAULT_COMMIT, "src").toString());
-		assertEquals("[dstadler]", helper.readElementsAt(DEFAULT_COMMIT, "src/main/java/org").toString());
+		RevTree tree = helper.getTree(DEFAULT_TREE);
+		assertEquals("[main, test]", helper.readElementsAt(tree, "src").toString());
+		assertEquals("[dstadler]", helper.readElementsAt(tree, "src/main/java/org").toString());
 
-		String list = helper.readElementsAt(DEFAULT_COMMIT, "").toString();
+		String list = helper.readElementsAt(tree, "").toString();
 		assertTrue("Had: " + list, list.contains("src"));
 		assertTrue("Had: " + list, list.contains("README.md"));
 		assertTrue("Had: " + list, list.contains("build.gradle"));
@@ -240,26 +283,10 @@ public class JGitHelperTest {
 
 	@Test
 	public void testReadElementsAtFails() throws Exception {
-		try {
-			helper.readElementsAt(DEFAULT_COMMIT, "run.sh");
-			fail("Should catch exception here");
-		} catch (FileNotFoundException e) {
-			assertTrue(e.getMessage().contains("run.sh"));
-		}
-
-		try {
-			helper.readElementsAt(DEFAULT_COMMIT, "README.md");
-			fail("Should catch exception here");
-		} catch (IllegalStateException e) {
-			assertTrue(e.getMessage().contains("README.md"));
-		}
-
-		try {
-			helper.readElementsAt(DEFAULT_COMMIT, "notexisting");
-			fail("Should catch exception here");
-		} catch (FileNotFoundException e) {
-			assertTrue(e.getMessage().contains("notexisting"));
-		}
+		RevTree tree = helper.getTree(DEFAULT_TREE);
+		assertNull(helper.readElementsAt(tree, "run.sh"));
+		assertSame(Collections.emptyList(), helper.readElementsAt(tree, "README.md"));
+		assertNull(helper.readElementsAt(tree, "notexisting"));
 	}
 
 	@Test
@@ -317,23 +344,25 @@ public class JGitHelperTest {
 
 		String commit = jgitHelper.getBranchHeadCommit("ppa_1.7.11");
 		assertNotNull(commit);
+		RevTree tree = helper.getCommit(commit).getTree();
 
-		items = jgitHelper.readElementsAt(commit, "");
+
+		items = jgitHelper.readElementsAt(tree, "");
 		assertNotNull(items);
 		assertTrue(items.size() > 0);
 
 		//subversion/branch/ppa_1.7.11/build/generator/__init__.py
 
-		items = jgitHelper.readElementsAt(commit, "build");
+		items = jgitHelper.readElementsAt(tree, "build");
 		assertNotNull(items);
 		assertTrue(items.size() > 0);
 
-		items = jgitHelper.readElementsAt(commit, "build/generator");
+		items = jgitHelper.readElementsAt(tree, "build/generator");
 		assertNotNull(items);
 		assertTrue(items.size() > 0);
 		assertTrue("Had: " + items, items.contains("__init__.py"));
 
-		InputStream openFile = jgitHelper.openFile(commit, "build/generator/__init__.py");
+		InputStream openFile = jgitHelper.openFile(tree, "build/generator/__init__.py");
 		try {
 			String string = IOUtils.toString(openFile);
 			System.out.println("Having " + string.length() + " bytes: \n" + string);
@@ -342,7 +371,7 @@ public class JGitHelperTest {
 		}
 
 
-		openFile = jgitHelper.openFile(commit, "build/generator/__init__.py");
+		openFile = jgitHelper.openFile(tree, "build/generator/__init__.py");
 
 		try {
 			// skip until we are at the offset
@@ -362,9 +391,10 @@ public class JGitHelperTest {
 	@Test
 	public void testWithTestdata() throws IOException {
 		String commit = helper.getBranchHeadCommit("master");
+		RevTree tree = helper.getCommit(commit).getTree();
 
 		// check that the test-data is there
-		List<String> elements = helper.readElementsAt(commit, "src/test/data");
+		List<String> elements = helper.readElementsAt(tree, "src/test/data");
 		assertEquals("Had: " + elements, 4, elements.size());
 		assertTrue(elements.contains("emptytestfile"));
 		assertTrue(elements.contains("one"));
@@ -373,19 +403,19 @@ public class JGitHelperTest {
 
 		// check type of files
 		final StatWrapper wrapper = getStatsWrapper();
-		helper.readType(commit, "src/test/data", wrapper);
+		helper.readType(tree, "src/test/data", wrapper);
 		assertEquals(NodeType.DIRECTORY, wrapper.type());
-		helper.readType(commit, "src/test/data/emptytestfile", wrapper);
+		helper.readType(tree, "src/test/data/emptytestfile", wrapper);
 		assertEquals(NodeType.FILE, wrapper.type());
-		helper.readType(commit, "src/test/data/one", wrapper);
+		helper.readType(tree, "src/test/data/one", wrapper);
 		assertEquals(NodeType.FILE, wrapper.type());
-		helper.readType(commit, "src/test/data/symlink", wrapper);
+		helper.readType(tree, "src/test/data/symlink", wrapper);
 		assertEquals(NodeType.SYMBOLIC_LINK, wrapper.type());
-		helper.readType(commit, "src/test/data/rellink", wrapper);
+		helper.readType(tree, "src/test/data/rellink", wrapper);
 		assertEquals(NodeType.SYMBOLIC_LINK, wrapper.type());
 
 		// check that the empty file is actually empty
-		InputStream stream = helper.openFile(commit, "src/test/data/emptytestfile");
+		InputStream stream = helper.openFile(tree, "src/test/data/emptytestfile");
 		try {
 			assertEquals("", IOUtils.toString(stream));
 		} finally {
@@ -393,7 +423,7 @@ public class JGitHelperTest {
 		}
 
 		// check that the file has the correct content
-		stream = helper.openFile(commit, "src/test/data/one");
+		stream = helper.openFile(tree, "src/test/data/one");
 		try {
 			assertEquals("1", IOUtils.toString(stream).trim());
 		} finally {
@@ -401,14 +431,14 @@ public class JGitHelperTest {
 		}
 
 		// check that we can read the symlink
-		stream = helper.openFile(commit, "src/test/data/symlink");
+		stream = helper.openFile(tree, "src/test/data/symlink");
 		try {
 			assertEquals("Should be 'one' as it contains the filename of the file pointed to!",
 					"one", IOUtils.toString(stream).trim());
 		} finally {
 			stream.close();
 		}
-		stream = helper.openFile(commit, "src/test/data/rellink");
+		stream = helper.openFile(tree, "src/test/data/rellink");
 		try {
 			assertEquals("Should be '../../../build.gradle' as it contains the filename of the file pointed to!",
 					"../../../build.gradle", IOUtils.toString(stream).trim());
@@ -418,17 +448,17 @@ public class JGitHelperTest {
 
 		// read the symlinks
 		assertArrayEquals("one".getBytes(Charsets.US_ASCII),
-				helper.readSymlink(commit, "src/test/data/symlink"));
+				helper.readSymlink(tree, "src/test/data/symlink"));
 		assertArrayEquals("../../../build.gradle".getBytes(Charsets.US_ASCII),
-				helper.readSymlink(commit, "src/test/data/rellink"));
+				helper.readSymlink(tree, "src/test/data/rellink"));
 		try {
-			helper.readSymlink(commit, "src/test/data/one");
+			helper.readSymlink(tree, "src/test/data/one");
 			fail("Should not be able to read symlink for normal file");
 		} catch (IllegalArgumentException e) {
 			assertTrue(e.getMessage().contains("src/test/data/one"));
 		}
 		try {
-			helper.readSymlink(commit, "src/test/data");
+			helper.readSymlink(tree, "src/test/data");
 			fail("Should not be able to read symlink for directory");
 		} catch (IllegalArgumentException e) {
 			assertTrue(e.getMessage().contains("src/test/data"));

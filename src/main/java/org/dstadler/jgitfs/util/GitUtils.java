@@ -15,6 +15,7 @@ import org.apache.commons.io.IOUtils;
  */
 public class GitUtils {
 	public final static String COMMIT_SLASH = "/commit/";
+	public final static String TREE_SLASH = "/tree/";
 	public final static String BRANCH_SLASH = "/branch/";
 	public final static String REMOTE_SLASH = "/remote/";
 	public final static String TAG_SLASH = "/tag/";
@@ -26,6 +27,7 @@ public class GitUtils {
 	private final static Pattern BRANCH_PATTERN = Pattern.compile("/branch/.+");
 	private final static Pattern REMOTE_PATTERN = Pattern.compile("/remote/.+");
 	private final static Pattern COMMIT_PATTERN = Pattern.compile("/commit/[a-z0-9]{40}(/.+)?");
+	private final static Pattern TREE_PATTERN = Pattern.compile("/tree/[a-z0-9]{40}(/.+)?");
 
 	public static boolean isTagDir(final String path) {
 		return TAG_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
@@ -38,9 +40,13 @@ public class GitUtils {
 	public static boolean isRemoteDir(final String path) {
 		return REMOTE_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
 	}
-	
+
 	public static boolean isCommitDir(final String path) {
 		return COMMIT_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
+	}
+
+	public static boolean isTreeDir(final String path) {
+		return TREE_PATTERN.matcher(path).matches() && !path.endsWith(".hidden");
 	}
 
 	public static long getUID() {

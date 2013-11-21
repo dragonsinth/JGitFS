@@ -15,12 +15,11 @@ import net.fusejna.types.TypeMode.NodeType;
 
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.errors.IncorrectObjectTypeException;
 import org.eclipse.jgit.errors.MissingObjectException;
+import org.eclipse.jgit.lib.AnyObjectId;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.ObjectIdSubclassMap;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
@@ -89,15 +88,65 @@ public class JGitHelper implements Closeable {
 	 * @param path The full path including the commit-id
 	 * @return The extracted path to the directory/file
 	 */
-	public String readPath(final String path) {
+	public String readCommitPath(final String path) {
 		String file = StringUtils.removeStart(path, GitUtils.COMMIT_SLASH);
 		return StringUtils.substring(file, 40 + 1);	// cut away commitish and slash
 	}
 
 	/**
+	 * For a path to a tree, i.e. something like "/tree/0123456..." return the
+	 * actual tree-id, i.e. 0123456...
+	 *
+	 * @param path The full path including the tree-id
+	 * @return The resulting tree-id
+	 */
+	public String readTree(String path) {
+		String commit = StringUtils.removeStart(path, GitUtils.TREE_SLASH);
+		return StringUtils.substring(commit, 0, 40);
+	}
+
+	/**
+	 * For a path to a file/directory inside a tree like "/tree/0123456.../somedir/somefile", return
+	 * the actual file-path, i.e. "somedir/somefile"
+	 *
+	 * @param path The full path including the tree-id
+	 * @return The extracted path to the directory/file
+	 */
+	public String readTreePath(final String path) {
+		String file = StringUtils.removeStart(path, GitUtils.TREE_SLASH);
+		return StringUtils.substring(file, 40 + 1);	// cut away commitish and slash
+	}
+
+	public RevCommit getCommit(String commit) throws IOException {
+		try {
+			RevWalk revWalk = new RevWalk(repository);
+			RevObject revObject = revWalk.parseAny(ObjectId.fromString(commit));
+			if (revObject instanceof RevCommit) {
+				return (RevCommit) revObject;
+			}
+			return null;
+		} catch (MissingObjectException e) {
+			return null;
+		}
+	}
+
+	public RevTree getTree(String tree) throws IOException {
+		try {
+			RevWalk revWalk = new RevWalk(repository);
+			RevObject revObject = revWalk.parseAny(ObjectId.fromString(tree));
+			if (revObject instanceof RevTree) {
+				return (RevTree) revObject;
+			}
+			return null;
+		} catch (MissingObjectException e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Populate the StatWrapper with the necessary values like mode, uid, gid and type of file/directory/symlink.
 	 *
-	 * @param commit The commit-id as-of which we read the data
+	 * @param tree the tree to start from
 	 * @param path The path to the file/directory
 	 * @param stat The StatWrapper instance to populate
 	 *
@@ -105,31 +154,12 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If access to the Git repository fails
 	 * @return true if the object could be found
 	 */
-	public boolean readType(String commit, String path, StatWrapper stat) throws IOException {
-		RevCommit revCommit;
-		try {
-			revCommit = buildRevCommit(commit);
-		} catch (MissingObjectException e) {
-			return false;
-		} catch (IncorrectObjectTypeException e) {
-			return false;
-		}
-
-		if (path.length() == 0) {
-			// The top-level commit directory itself.
+	public boolean readType(RevTree tree, String path, StatWrapper stat) throws IOException {
+		// shortcut for root-path
+		if (path.isEmpty()) {
 			stat.setMode(NodeType.DIRECTORY, true, false, true);
 			return true;
 		}
-
-		// and using commit's tree find the path
-		RevTree tree = revCommit.getTree();
-		//System.out.println("Having tree: " + tree + " for commit " + commit);
-
-		// set time and user-id/group-id
-		stat.ctime(revCommit.getCommitTime());
-		stat.mtime(revCommit.getCommitTime());
-		//stat.uid(GitUtils.UID);
-		//stat.gid(GitUtils.GID);
 
 		// now read the file/directory attributes
 		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
@@ -153,35 +183,38 @@ public class JGitHelper implements Closeable {
 			return true;
 		}
 
-		throw new IllegalStateException("Found unknown FileMode in Git for commit '" + commit + "' and path '" + path + "': " + fileMode.getBits());
+		throw new IllegalStateException("Found unknown FileMode in Git for tree '" + tree + "' and path '" + path + "': " + fileMode.getBits());
 	}
 
 	/**
-	 * Read the target file for the given symlink as part of the given commit.
+	 * Read the target file for the given symlink as part of the given tree.
 	 *
-	 * @param commit the commit-id as-of which we read the symlink
+	 * @param tree The tree from which we read the data
 	 * @param path the path to the symlink
 	 * @return the target of the symlink, relative to the directory of the symlink itself
 	 * @throws IOException If an error occurs while reading from the Git repository
-	 * @throws FileNotFoundException If the given path cannot be found in the given commit-id
 	 * @throws IllegalArgumentException If the given path does not denote a symlink
+	 * @return null if the path cannot be found
 	 */
-	public byte[] readSymlink(final String commit, final String path) throws IOException {
-		RevCommit revCommit = buildRevCommit(commit);
+	public byte[] readSymlink(final RevTree tree, final String path) throws IOException {
+		// shortcut for root-path
+		if (path.isEmpty()) {
+			return null;
+		}
 
-		// and using commit's tree find the path
-		RevTree tree = revCommit.getTree();
-
-		// now read the file/directory attributes
-		TreeWalk treeWalk = buildTreeWalk(tree, path);
+		// read the file/directory attributes
+		TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
+		if (treeWalk == null) {
+			return null;
+		}
 		FileMode fileMode = treeWalk.getFileMode(0);
 		if(!fileMode.equals(FileMode.SYMLINK)) {
-			throw new IllegalArgumentException("Had request for symlink-target which is not a symlink, commit '" + commit + "' and path '" + path + "': " + fileMode.getBits());
+			throw new IllegalArgumentException("Had request for symlink-target which is not a symlink, tree '" + tree + "' and path '" + path + "': " + fileMode.getBits());
 		}
 
 		return ByteStreams.toByteArray(new InputSupplier<InputStream>() {
 			@Override public InputStream getInput() throws IOException {
-				return openFile(commit, path);
+				return openFile(tree, path);
 			}
 		});
 	}
@@ -189,26 +222,19 @@ public class JGitHelper implements Closeable {
 	/**
 	 * Retrieve the contents of the given file as-of the given commit.
 	 *
-	 * @param commit The commit-id as-of which we read the data
+	 * @param tree The tree from which we read the data
 	 * @param path The path to the file/directory
 	 *
 	 * @return An InputStream which can be used to read the contents of the file.
 	 *
 	 * @throws IllegalStateException If the path or the commit cannot be found or does not denote a file
 	 * @throws IOException If access to the Git repository fails
-	 * @throws FileNotFoundException If the given path cannotbe found in the given commit-id
+	 * @throws FileNotFoundException If the given path cannot be found in the given tree
 	 */
-	public InputStream openFile(String commit, String path) throws IOException {
-		RevCommit revCommit = buildRevCommit(commit);
-
-		// use the commit's tree find the path
-		RevTree tree = revCommit.getTree();
-		//System.out.println("Having tree: " + tree + " for commit " + commit);
-
-		// now try to find a specific file
+	public InputStream openFile(RevTree tree, String path) throws IOException {
 		TreeWalk treeWalk = buildTreeWalk(tree, path);
 		if((treeWalk.getFileMode(0).getBits() & FileMode.TYPE_FILE) == 0) {
-			throw new IllegalStateException("Tried to read the contents of a non-file for commit '" + commit + "' and path '" + path + "', had filemode " + treeWalk.getFileMode(0).getBits());
+			throw new IllegalStateException("Tried to read the contents of a non-file for tree '" + tree + "' and path '" + path + "', had filemode " + treeWalk.getFileMode(0).getBits());
 		}
 
 		// then open the file for reading.
@@ -352,59 +378,44 @@ public class JGitHelper implements Closeable {
 	}
 
 	/**
-	 * Retrieve directory-entries based on a commit-id and a given directory in that commit.
+	 * Retrieve directory-entries based on a tree and a given directory in that tree.
 	 *
-	 * @param commit The commit-id to show the path as-of
+	 * @param tree The tree to show the path as-of
 	 * @param path The path underneath the commit-id to list
-	 *
-	 * @return A list of file, directory and symlink elements underneath the given path
-	 *
+	 * @return A list of file, directory and symlink elements underneath the given path, or null if the path cannot be found
 	 * @throws IllegalStateException If the path or the commit cannot be found or does not denote a directory
 	 * @throws IOException If access to the Git repository fails
-	 * @throws FileNotFoundException If the given path cannot be found as part of the commit-id
 	 */
-	public List<String> readElementsAt(String commit, String path) throws IOException {
-		RevCommit revCommit = buildRevCommit(commit);
-
-		// and using commit's tree find the path
-		RevTree tree = revCommit.getTree();
-		//System.out.println("Having tree: " + tree + " for commit " + commit);
-
-		List<String> items = new ArrayList<String>();
-
-		// shortcut for root-path
-		if(path.isEmpty()) {
-			TreeWalk treeWalk = new TreeWalk(repository);
-			treeWalk.addTree(tree);
-			treeWalk.setRecursive(false);
-			treeWalk.setPostOrderTraversal(false);
-
-			while(treeWalk.next()) {
-				items.add(treeWalk.getPathString());
+	public List<String> readElementsAt(RevTree tree, String path) throws IOException {
+		AnyObjectId toWalk;
+		if (path.isEmpty()) {
+			// shortcut for root-path
+			toWalk = tree;
+		} else {
+			// try to find a specific subtree
+			TreeWalk treeWalk = TreeWalk.forPath(repository, path, tree);
+			if(treeWalk == null) {
+				return null;
 			}
-
-			return items;
-		}
-
-		// now try to find a specific file
-		TreeWalk treeWalk = buildTreeWalk(tree, path);
-		if((treeWalk.getFileMode(0).getBits() & FileMode.TYPE_TREE) == 0) {
-			throw new IllegalStateException("Tried to read the elements of a non-tree for commit '" + commit + "' and path '" + path + "', had filemode " + treeWalk.getFileMode(0).getBits());
+			if((treeWalk.getFileMode(0).getBits() & FileMode.TYPE_TREE) == 0) {
+				return Collections.emptyList();
+			}
+			toWalk = treeWalk.getObjectId(0);
 		}
 
 		TreeWalk dirWalk = new TreeWalk(repository);
-		dirWalk.addTree(treeWalk.getObjectId(0));
+		dirWalk.addTree(toWalk);
 		dirWalk.setRecursive(false);
+		List<String> items = new ArrayList<String>();
 		while(dirWalk.next()) {
 			items.add(dirWalk.getPathString());
 		}
-
 		return items;
 	}
 
-    @Override
-    public String toString() {
-        // just return toString() from Repository as it prints out the git-directory
-        return repository.toString();
-    }
+	@Override
+	public String toString() {
+			// just return toString() from Repository as it prints out the git-directory
+			return repository.toString();
+	}
 }

@@ -5,6 +5,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -19,10 +20,11 @@ import net.fusejna.StructFuseFileInfo.FileInfoWrapper;
 import net.fusejna.StructStat.StatWrapper;
 import net.fusejna.types.TypeMode.NodeType;
 import net.fusejna.util.FuseFilesystemAdapterFull;
-
 import org.apache.commons.lang3.StringUtils;
 import org.dstadler.jgitfs.util.GitUtils;
 import org.dstadler.jgitfs.util.JGitHelper;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevTree;
 
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -53,6 +55,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		DIRS.add("/");
 		DIRS.add("/branch");
 		DIRS.add("/commit");
+		DIRS.add("/tree");
 		DIRS.add("/remote");
 		DIRS.add("/tag");
 	}
@@ -101,16 +104,33 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			return getattrRef("refs/remotes/" + StringUtils.removeStart(path, GitUtils.REMOTE_SLASH), stat);
 		} else if (GitUtils.isCommitDir(path)) {
 			String commit = jgitHelper.readCommit(path);
-			String file = jgitHelper.readPath(path);
-
+			String file = jgitHelper.readCommitPath(path);
 			try {
-				if (jgitHelper.readType(commit, file, stat)) {
-					return 0;
-				} else {
-					return -ErrorCodes.ENOENT();
+				RevCommit revCommit = jgitHelper.getCommit(commit);
+				if (revCommit != null) {
+					stat.ctime(revCommit.getCommitTime());
+					stat.mtime(revCommit.getCommitTime());
+					if (jgitHelper.readType(revCommit.getTree(), file, stat)) {
+						return 0;
+					}
 				}
+				return -ErrorCodes.ENOENT();
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading type of path " + path + ", commit " + commit + " and file " + file, e);
+			}
+		} else if (GitUtils.isTreeDir(path)) {
+			String tree = jgitHelper.readTree(path);
+			String file = jgitHelper.readTreePath(path);
+			try {
+				RevTree revTree = jgitHelper.getTree(tree);
+				if (revTree != null) {
+					if (jgitHelper.readType(revTree, file, stat)) {
+						return 0;
+					}
+				}
+				return -ErrorCodes.ENOENT();
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading type of path " + path + ", tree " + tree + " and file " + file, e);
 			}
 		}
 
@@ -150,12 +170,27 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 
 	@Override
 	public int read(final String path, final ByteBuffer buffer, final long size, final long offset, final FileInfoWrapper info) {
-		String commit = jgitHelper.readCommit(path);
-		String file = jgitHelper.readPath(path);
-
 		try {
-			InputStream openFile = jgitHelper.openFile(commit, file);
+			final RevTree revTree;
+			final String file;
+			if (GitUtils.isCommitDir(path)) {
+				String commit = jgitHelper.readCommit(path);
+				file = jgitHelper.readCommitPath(path);
+				RevCommit revCommit = jgitHelper.getCommit(commit);
+				revTree = (revCommit != null) ? revCommit.getTree() : null;
+			} else if (GitUtils.isTreeDir(path)) {
+				String tree = jgitHelper.readTree(path);
+				file = jgitHelper.readTreePath(path);
+				revTree = jgitHelper.getTree(tree);
+			} else {
+				return -ErrorCodes.ENOENT();
+			}
 
+			if (revTree == null || file.isEmpty()) {
+				return -ErrorCodes.ENOENT();
+			}
+
+			InputStream openFile = jgitHelper.openFile(revTree, file);
 			try {
 				// skip until we are at the offset
 				ByteStreams.skipFully(openFile, offset);
@@ -178,8 +213,10 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			} finally {
 				openFile.close();
 			}
+		} catch (FileNotFoundException e) {
+			return -ErrorCodes.ENOENT();
 		} catch (Exception e) {
-			throw new IllegalStateException("Error reading contents of path " + path + ", commit " + commit + " and file " + file, e);
+			throw new IllegalStateException("Error reading contents of path " + path, e);
 		}
 	}
 
@@ -191,6 +228,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			filler.add("/commit");
 			filler.add("/remote");
 			filler.add("/tag");
+			filler.add("/tree");
 
 			// TODO: implement later
 //			filler.add("/stash");
@@ -208,21 +246,34 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			// Do not list commits.
 			// consider: LRU list of recently-accessed for completion?
 			return 0;
+		} else if (path.equals("/tree")) {
+			// Do not list trees.
+			// consider: LRU list of recently-accessed for completion?
+			return 0;
 		} else if (GitUtils.isCommitDir(path)) {
 			// handle listing the root dir of a commit or a file beneath that
 			String commit = jgitHelper.readCommit(path);
-			String dir = jgitHelper.readPath(path);
+			String dir = jgitHelper.readCommitPath(path);
 
 			try {
-				List<String> items = jgitHelper.readElementsAt(commit, dir);
-				for(String item : items) {
-					filler.add(item);
+				RevCommit revCommit = jgitHelper.getCommit(commit);
+				if (revCommit == null) {
+					return -ErrorCodes.ENOENT();
 				}
+				return readdir(revCommit.getTree(), dir, filler);
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading elements of path " + path + ", commit " + commit + " and directory " + dir, e);
 			}
+		} else if (GitUtils.isTreeDir(path)) {
+			// handle listing the root dir of a tree or a file beneath that
+			String tree = jgitHelper.readTree(path);
+			String dir = jgitHelper.readTreePath(path);
 
-			return 0;
+			try {
+				return readdir(jgitHelper.getTree(tree), dir, filler);
+			} catch (Exception e) {
+				throw new IllegalStateException("Error reading elements of path " + path + ", tree " + tree + " and directory " + dir, e);
+			}
 		} else if (GitUtils.isBranchDir(path)) {
 			try {
 				String parent = StringUtils.removeStart(path, "/branch/");
@@ -338,6 +389,24 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		throw new IllegalStateException("Error reading directories in path " + path);
 	}
 
+	private int readdir(RevTree revTree, String dir, DirectoryFiller filler) throws IOException {
+		if (revTree != null) {
+			List<String> items = jgitHelper.readElementsAt(revTree, dir);
+			if (items != null) {
+				if (items == Collections.<String> emptyList()) {
+					return -ErrorCodes.ENOTDIR();
+				}
+				for (String item : items) {
+					filler.add(item);
+				}
+				return 0;
+			}
+		}
+		return -ErrorCodes.ENOENT();
+	}
+
+	private static final byte[] SENTINEL = new byte[0];
+
 	/**
 	 * A cache for symlinks from branches/tags to commits, this is useful as queries for symlinks
 	 * are done very often as each access to a file on a branch also requires the symlink to the
@@ -352,28 +421,45 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
       .build(new CacheLoader<String, byte[]>() {
 				@Override
 				public byte[] load(String path) {
+					byte[] bytes = doLoad(path);
+					return (bytes != null) ? bytes : SENTINEL;
+				}
+
+				private byte[] doLoad(String path) {
 					try {
-						final String commit;
+						final String commitLink;
 						final String partialPath;
 						if (GitUtils.isBranchDir(path)) {
 							partialPath = StringUtils.removeStart(path, GitUtils.BRANCH_SLASH);
-							commit = jgitHelper.getBranchHeadCommit(partialPath);
+							commitLink = jgitHelper.getBranchHeadCommit(partialPath);
 						} else if (GitUtils.isTagDir(path)) {
 							partialPath = StringUtils.removeStart(path, GitUtils.TAG_SLASH);
-							commit = jgitHelper.getTagHeadCommit(partialPath);
+							commitLink = jgitHelper.getTagHeadCommit(partialPath);
 						} else if (GitUtils.isRemoteDir(path)) {
 							partialPath = StringUtils.removeStart(path, GitUtils.REMOTE_SLASH);
-							commit = jgitHelper.getRemoteHeadCommit(partialPath);
+							commitLink = jgitHelper.getRemoteHeadCommit(partialPath);
+						} else if (GitUtils.isCommitDir(path)) {
+							String commit = jgitHelper.readCommit(path);
+							String file = jgitHelper.readCommitPath(path);
+							RevCommit revCommit = jgitHelper.getCommit(commit);
+							if (revCommit == null || file.isEmpty()) {
+								return null;
+							}
+							return jgitHelper.readSymlink(revCommit.getTree(), file);
+						} else if (GitUtils.isTreeDir(path)) {
+							String tree = jgitHelper.readTree(path);
+							String file = jgitHelper.readTreePath(path);
+							RevTree revTree = jgitHelper.getTree(tree);
+							if (revTree == null || file.isEmpty()) {
+								return null;
+							}
+							return jgitHelper.readSymlink(revTree, file);
 						} else {
-							String lcommit = jgitHelper.readCommit(path);
-							String dir = jgitHelper.readCommitPath(path);
-
-							return jgitHelper.readSymlink(lcommit, dir);
+							return null;
 						}
 
-						if (commit == null) {
-							throw new FileNotFoundException(
-									"Had unknown tag/branch/remote " + path + " in readlink()");
+						if (commitLink == null) {
+							return null;
 						}
 						StringBuilder target = new StringBuilder("..");
 						for (char c : partialPath.toCharArray()) {
@@ -382,7 +468,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 							}
 						}
 						target.append(GitUtils.COMMIT_SLASH);
-						target.append(commit);
+						target.append(commitLink);
 
 						return target.toString().getBytes();
 					} catch (Exception e) {
@@ -405,25 +491,21 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		byte[] cachedCommit;
 		try {
 			cachedCommit = linkCache.get(path);
-			if(cachedCommit != null) {
-				// buffer overflow checks are done by the calls to put() itself per javadoc,
-				// currently we will throw an exception to the outside, experiment showed that we support 4097 bytes of path-length on 64-bit Ubuntu this way
-				buffer.put(cachedCommit);
-				// zero-byte is appended by fuse-jna itself
-
-				// returning the size as per readlink(2) spec causes fuse errors: return cachedCommit.length;
-				return 0;
-			}
-		} catch (UncheckedExecutionException e) {
-			if(e.getCause().getCause() instanceof FileNotFoundException) {
+			if (cachedCommit == null || cachedCommit == SENTINEL) {
 				return -ErrorCodes.ENOENT();
 			}
+			// buffer overflow checks are done by the calls to put() itself per javadoc,
+			// currently we will throw an exception to the outside, experiment showed that we support 4097 bytes of path-length on 64-bit Ubuntu this way
+			buffer.put(cachedCommit);
+			// zero-byte is appended by fuse-jna itself
+
+			// returning the size as per readlink(2) spec causes fuse errors: return cachedCommit.length;
+			return 0;
+		} catch (UncheckedExecutionException e) {
 			throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
 		} catch (ExecutionException e) {
 			throw new IllegalStateException("Error reading commit of tag/branch-path " + path, e);
 		}
-
-		throw new IllegalStateException("Error reading commit of tag/branch-path " + path);
 	}
 
 	/**
