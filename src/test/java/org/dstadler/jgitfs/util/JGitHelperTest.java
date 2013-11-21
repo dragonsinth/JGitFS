@@ -33,7 +33,7 @@ import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
 
-
+import com.google.common.base.Charsets;
 
 public class JGitHelperTest {
 	public final static String DEFAULT_COMMIT = "ede9797616a805d6cbeca376bfbbac9a8b7eb64f";
@@ -517,8 +517,10 @@ public class JGitHelperTest {
 		}
 
 		// read the symlinks
-		assertEquals("one", helper.readSymlink(commit, "src/test/data/symlink"));
-		assertEquals("../../../build.gradle", helper.readSymlink(commit, "src/test/data/rellink"));
+		assertArrayEquals("one".getBytes(Charsets.US_ASCII),
+				helper.readSymlink(commit, "src/test/data/symlink"));
+		assertArrayEquals("../../../build.gradle".getBytes(Charsets.US_ASCII),
+				helper.readSymlink(commit, "src/test/data/rellink"));
 		try {
 			helper.readSymlink(commit, "src/test/data/one");
 			fail("Should not be able to read symlink for normal file");

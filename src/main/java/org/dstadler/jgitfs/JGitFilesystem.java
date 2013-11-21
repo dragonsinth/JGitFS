@@ -28,6 +28,8 @@ import org.dstadler.jgitfs.util.JGitHelper;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.io.ByteStreams;
+import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 
 /**
@@ -106,59 +108,11 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			}
 			return 0;
 		} else if (GitUtils.isBranchDir(path)) {
-			String partialPath = StringUtils.removeStart(path, "/branch/");
-			try {
-				String commit = jgitHelper.getBranchHeadCommit(partialPath);
-				if (commit != null) {
-					// Exact match, it's a branch.
-					stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
-					return 0;
-				}
-				List<String> items = jgitHelper.getBranches(partialPath);
-				if (items.size() > 0) {
-					// A directory containing branches.
-					stat.setMode(NodeType.DIRECTORY, true, false, true);
-					return 0;
-				}
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading branches", e);
-			}
+			return getattrRef("refs/heads/" + StringUtils.removeStart(path, GitUtils.BRANCH_SLASH), stat);
 		} else if (GitUtils.isTagDir(path)) {
-			String partialPath = StringUtils.removeStart(path, "/tag/");
-			try {
-				String commit = jgitHelper.getTagHeadCommit(partialPath);
-				if (commit != null) {
-					// Exact match, it's a branch.
-					stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
-					return 0;
-				}
-				List<String> items = jgitHelper.getTags(partialPath);
-				if (items.size() > 0) {
-					// A directory containing branches.
-					stat.setMode(NodeType.DIRECTORY, true, false, true);
-					return 0;
-				}
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading tags", e);
-			}
+			return getattrRef("refs/tags/" + StringUtils.removeStart(path, GitUtils.TAG_SLASH), stat);
 		} else if (GitUtils.isRemoteDir(path)) {
-			String partialPath = StringUtils.removeStart(path, "/remote/");
-			try {
-				String commit = jgitHelper.getRemoteHeadCommit(partialPath);
-				if (commit != null) {
-					// Exact match, it's a branch.
-					stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
-					return 0;
-				}
-				List<String> items = jgitHelper.getRemotes(partialPath);
-				if (items.size() > 0) {
-					// A directory containing branches.
-					stat.setMode(NodeType.DIRECTORY, true, false, true);
-					return 0;
-				}
-			} catch (Exception e) {
-				throw new IllegalStateException("Error reading remote branches", e);
-			}
+			return getattrRef("refs/remotes/" + StringUtils.removeStart(path, GitUtils.REMOTE_SLASH), stat);
 		}
 
 		// all others are reported as "not found"
@@ -176,6 +130,25 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		return -ErrorCodes.ENOENT();
 	}
 
+	private int getattrRef(String ref, StatWrapper stat) {
+		try {
+			String commit = jgitHelper.getRefCommit(ref);
+			if (commit != null) {
+				// Exact match, it's a branch.
+				stat.setMode(NodeType.SYMBOLIC_LINK, true, true, true);
+				return 0;
+			}
+			if (jgitHelper.hasRefs(ref)) {
+				// A directory containing branches.
+				stat.setMode(NodeType.DIRECTORY, true, false, true);
+				return 0;
+			}
+			return -ErrorCodes.ENOENT();
+		} catch (Exception e) {
+			throw new IllegalStateException("Error reading branches", e);
+		}
+	}
+
 	@Override
 	public int read(final String path, final ByteBuffer buffer, final long size, final long offset, final FileInfoWrapper info) {
 		String commit = jgitHelper.readCommit(path);
@@ -186,18 +159,23 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 
 			try {
 				// skip until we are at the offset
-				openFile.skip(offset);
+				ByteStreams.skipFully(openFile, offset);
 
-				byte[] arr = new byte[(int)size];
-				int read = openFile.read(arr, 0, (int)size);
-				// -1 indicates EOF => nothing to put into the buffer
-				if(read == -1) {
-					return 0;
+				byte[] arr = new byte[8096];
+				long remaining = size;
+				long total = 0;
+				while (remaining > 0) {
+					int attemptToRead = (int) Math.min(arr.length, remaining);
+					int read = ByteStreams.read(openFile, arr, 0, attemptToRead);
+					buffer.put(arr, 0, read);
+					total += read;
+					remaining -= read;
+					if (read < attemptToRead) {
+						// Reached EOF.
+						break;
+					}
 				}
-
-				buffer.put(arr, 0, read);
-
-				return read;
+				return Ints.saturatedCast(total);
 			} finally {
 				openFile.close();
 			}
@@ -413,7 +391,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
               String lcommit = jgitHelper.readCommit(path);
               String dir = jgitHelper.readPath(path);
 
-              return jgitHelper.readSymlink(lcommit, dir).getBytes();
+              return jgitHelper.readSymlink(lcommit, dir);
             }
 
             if (commit == null) {

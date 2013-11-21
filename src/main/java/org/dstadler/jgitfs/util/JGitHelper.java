@@ -17,7 +17,6 @@ import java.util.Set;
 import net.fusejna.StructStat.StatWrapper;
 import net.fusejna.types.TypeMode.NodeType;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
@@ -34,6 +33,9 @@ import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.TreeWalk;
+
+import com.google.common.io.ByteStreams;
+import com.google.common.io.InputSupplier;
 
 /**
  * Helper class which encapsulates access to the actual Git repository by
@@ -149,7 +151,7 @@ public class JGitHelper implements Closeable {
 	 * @throws FileNotFoundException If the given path cannot be found in the given commit-id
 	 * @throws IllegalArgumentException If the given path does not denote a symlink
 	 */
-	public String readSymlink(String commit, String path) throws IOException {
+	public byte[] readSymlink(final String commit, final String path) throws IOException {
 		RevCommit revCommit = buildRevCommit(commit);
 
 		// and using commit's tree find the path
@@ -161,14 +163,12 @@ public class JGitHelper implements Closeable {
 		if(!fileMode.equals(FileMode.SYMLINK)) {
 			throw new IllegalArgumentException("Had request for symlink-target which is not a symlink, commit '" + commit + "' and path '" + path + "': " + fileMode.getBits());
 		}
-		
-		// try to read the file-data as it contains the symlink target
-		InputStream openFile = openFile(commit, path);
-		try {
-			return IOUtils.toString(openFile);
-		} finally {
-			openFile.close();
-		}
+
+		return ByteStreams.toByteArray(new InputSupplier<InputStream>() {
+			@Override public InputStream getInput() throws IOException {
+				return openFile(commit, path);
+			}
+		});
 	}
 	
 	/**
@@ -227,23 +227,7 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getBranches() throws IOException {
-		return getBranches("");
-	}
-
-	/**
-	 * Return all branches matching the given prefix.
-	 *
-	 * @return A list of branch-names
-	 * @throws IOException If accessing the Git repository fails
-	 */
-	public List<String> getBranches(String prefix) throws IOException {
-		if (prefix.length() > 0) {
-			prefix += '/';
-		}
-		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/heads/" + prefix);
-		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
-		Collections.sort(result);
-		return result;
+		return getRefs("refs/heads");
 	}
 
 	/**
@@ -254,11 +238,7 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public String getBranchHeadCommit(String branch) throws IOException {
-		Ref ref = git.getRepository().getRef("refs/heads/" + branch);
-		if (ref == null) {
-			return null;
-		}
-		return ref.getObjectId().getName();
+		return getRefCommit("refs/heads/" + branch);
 	}
 
 	/**
@@ -268,23 +248,7 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getRemotes() throws IOException {
-		return getRemotes("");
-	}
-
-	/**
-	 * Return all remote branches matching the given prefix.
-	 *
-	 * @return A list of remote branch-names
-	 * @throws IOException If accessing the Git repository fails
-	 */
-	public List<String> getRemotes(String prefix) throws IOException {
-		if (prefix.length() > 0) {
-			prefix += '/';
-		}
-		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/remotes/" + prefix);
-		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
-		Collections.sort(result);
-		return result;
+		return getRefs("refs/remotes");
 	}
 
 	/**
@@ -309,23 +273,7 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If accessing the Git repository fails
 	 */
 	public List<String> getTags() throws IOException {
-		return getTags("");
-	}
-
-	/**
-	 * Return all tags matching the given prefix.
-	 *
-	 * @return A list of tag-names
-	 * @throws IOException If accessing the Git repository fails
-	 */
-	public List<String> getTags(String prefix) throws IOException {
-		if (prefix.length() > 0) {
-			prefix += '/';
-		}
-		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs("refs/tags/" + prefix);
-		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
-		Collections.sort(result);
-		return result;
+		return getRefs("refs/tags");
 	}
 
 	/**
@@ -341,6 +289,41 @@ public class JGitHelper implements Closeable {
 			return null;
 		}
 		return ref.getObjectId().getName();
+	}
+
+	/**
+	 * Return the commit-id for the given branch.
+	 *
+	 * @param refName The ref to read data for
+	 * @return A commit-id if found or null if not found.
+	 * @throws IOException If accessing the Git repository fails
+	 */
+	public String getRefCommit(String refName) throws IOException {
+		Ref ref = git.getRepository().getRef(refName);
+		if (ref == null) {
+			return null;
+		}
+		return ref.getObjectId().getName();
+	}
+
+	/**
+	 * Return all refs matching the given prefix.
+	 *
+	 * @return A list of remote branch-names
+	 * @throws IOException If accessing the Git repository fails
+	 */
+	public List<String> getRefs(String prefix) throws IOException {
+		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs(prefix + '/');
+		ArrayList<String> result = new ArrayList<String>(refMap.keySet());
+		Collections.sort(result);
+		return result;
+	}
+
+
+	public boolean hasRefs(String prefix) throws IOException {
+		// NOT faster: git.getRepository().getRefDatabase().isNameConflicting(prefix);
+		Map<String, Ref> refMap = git.getRepository().getRefDatabase().getRefs(prefix + '/');
+		return refMap.size() > 0;
 	}
 
 	/**
@@ -533,5 +516,5 @@ public class JGitHelper implements Closeable {
     public String toString() {
         // just return toString() from Repository as it prints out the git-directory
         return repository.toString();
-    }	
+    }
 }
