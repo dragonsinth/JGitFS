@@ -44,6 +44,7 @@ import com.google.common.io.InputSupplier;
 public class JGitHelper implements Closeable {
 	private final Repository repository;
 	private final Git git;
+	private final File gitDir;
 
 	/**
 	 * Construct the helper with the given directory as Git repository.
@@ -53,21 +54,25 @@ public class JGitHelper implements Closeable {
 	 * @throws IOException If opening the Git repository fails
 	 */
 	public JGitHelper(String pGitDir) throws IOException {
-		String gitDir = pGitDir;
-		if(!gitDir.endsWith(".git")) {
-			gitDir = gitDir + "/.git";
+		if(!pGitDir.endsWith(".git")) {
+			pGitDir = pGitDir + "/.git";
 		}
-		if(!new File(gitDir).exists()) {
+		gitDir = new File(pGitDir).getCanonicalFile();
+		if(!gitDir.isDirectory()) {
 			throw new IllegalStateException("Could not find git repository at " + gitDir);
 		}
 
 		System.out.println("Using git repo at " + gitDir);
 		FileRepositoryBuilder builder = new FileRepositoryBuilder();
-		repository = builder.setGitDir(new File(gitDir))
+		repository = builder.setGitDir(gitDir)
 		  .readEnvironment() // scan environment GIT_* variables
 		  .findGitDir() // scan up the file system tree
 		  .build();
 		git = new Git(repository);
+	}
+
+	public File getGitDir() {
+		return gitDir;
 	}
 
 	/**

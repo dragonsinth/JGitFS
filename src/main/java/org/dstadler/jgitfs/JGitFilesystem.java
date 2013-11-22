@@ -25,10 +25,12 @@ import org.dstadler.jgitfs.util.JGitHelper;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 
+import com.google.common.base.Charsets;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.io.ByteStreams;
+import com.google.common.io.Resources;
 import com.google.common.primitives.Ints;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 
@@ -59,6 +61,18 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		DIRS.add("/tag");
 	}
 
+	private static final String README_MD;
+	static {
+		try {
+			README_MD = Resources.toString(JGitFilesystem.class.getResource("README.md"),
+					Charsets.US_ASCII);
+		} catch (IOException e) {
+			throw new AssertionError(e);
+		}
+	}
+
+	private final byte[] readmeMdText;
+
 	/**
 	 * Construct the filesystem and create internal helpers.
 	 *
@@ -73,6 +87,8 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 		log(enableLogging);
 
 		jgitHelper = new JGitHelper(gitDir);
+
+		readmeMdText = String.format(README_MD, jgitHelper.getGitDir()).getBytes(Charsets.US_ASCII);
 	}
 
 	@Override
@@ -120,6 +136,10 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			} catch (Exception e) {
 				throw new IllegalStateException("Error reading type of path " + path + ", tree " + tree + " and file " + file, e);
 			}
+		} else if ("/README.md".equals(path)) {
+			stat.size(readmeMdText.length);
+			stat.setMode(NodeType.FILE, true, false, false);
+			return 0;
 		}
 
 		// all others are reported as "not found"
@@ -147,6 +167,15 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 
 	@Override
 	public int read(final String path, final ByteBuffer buffer, final long size, final long offset, final FileInfoWrapper info) {
+		if ("/README.md".equals(path)) {
+			long remaining = readmeMdText.length - offset;
+			if (remaining <= 0) {
+				return 0;
+			}
+			int len = (int) Math.min(size, remaining);
+			buffer.put(readmeMdText, (int) offset, len);
+			return len;
+		}
 		try {
 			final RevTree revTree;
 			final String file;
@@ -207,6 +236,7 @@ public class JGitFilesystem extends FuseFilesystemAdapterFull implements Closeab
 			filler.add("/remote");
 			filler.add("/tag");
 			filler.add("/tree");
+			filler.add("/README.md");
 
 			// TODO: implement later
 //			filler.add("/stash");

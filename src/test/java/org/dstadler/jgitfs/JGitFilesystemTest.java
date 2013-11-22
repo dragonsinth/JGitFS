@@ -150,7 +150,7 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		fs.readdir("/", filler);
-		assertEquals("[/branch, /commit, /remote, /tag, /tree]", filledFiles.toString());
+		assertEquals("[/branch, /commit, /remote, /tag, /tree, /README.md]", filledFiles.toString());
 
 		filledFiles.clear();
 		fs.readdir("/tag", filler);
@@ -459,9 +459,9 @@ public class JGitFilesystemTest {
 		DirectoryFiller filler = new DirectoryFillerImplementation(filledFiles);
 
 		assertEquals(0, fs.readdir("/", filler));
-		assertEquals("[/branch, /commit, /remote, /tag, /tree]", filledFiles.toString());
+		assertEquals("[/branch, /commit, /remote, /tag, /tree, /README.md]", filledFiles.toString());
 
-		for(String file : new ArrayList<String>(filledFiles)) {
+		for(String file : new ArrayList<String>(filledFiles.subList(0, 5))) {
 			assertEquals(0, fs.getattr(file, stat));
 			assertEquals(0, fs.readdir(file, filler));
 		}
